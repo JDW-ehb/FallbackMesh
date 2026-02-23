@@ -20,31 +20,26 @@ public sealed class LLMChatService : IZcspService
     private readonly ConcurrentDictionary<Guid, NetworkStream> _sessions = new();
     private readonly IServiceScopeFactory _scopeFactory;
 
-    // Needed for routing (server-first, fallback direct)
+    // Routing (server-first, fallback direct)
     private readonly ZcspPeer _peer;
     private readonly RoutingState _routingState;
     private readonly SemaphoreSlim _sessionLock = new(1, 1);
 
     private Guid? _serverSessionId;
 
-    // hostProtocolPeerId -> sessionId
+    // remoteProtocolPeerId -> sessionId
     private readonly ConcurrentDictionary<string, Guid> _directSessions = new();
 
     // sessionId -> stream + remote peer id
     private readonly ConcurrentDictionary<Guid, SessionContext> _contexts = new();
 
-    // requestId -> requesterSessionId (ONLY used when acting as server router)
+    // requestId -> requesterSessionId (ONLY when acting as server router)
     private readonly ConcurrentDictionary<Guid, Guid> _pendingRequests = new();
 
-    private sealed record SessionContext(NetworkStream Stream, string RemoteProtocolPeerId);
-
-    // sessionId -> stream + who it's connected to
-    private readonly ConcurrentDictionary<Guid, SessionContext> _contexts = new();
-
-    private sealed record SessionContext(NetworkStream Stream, string RemoteProtocolPeerId);
-    private sealed record SessionContext(NetworkStream Stream, string RemoteProtocolPeerId);
-
+    // sessionId -> conversationId (host-side persistence)
     private readonly ConcurrentDictionary<Guid, Guid> _sessionConversations = new();
+
+    private sealed record SessionContext(NetworkStream Stream, string RemoteProtocolPeerId);
 
     public event Func<string, Task>? ResponseReceived;
     public event Action<Guid, string>? SessionStarted;
@@ -65,6 +60,10 @@ public sealed class LLMChatService : IZcspService
         };
     }
 
+    // =====================================================
+    // IZcspService callbacks
+    // =====================================================
+
     public async Task OnSessionStartedAsync(Guid sessionId, string remotePeerId, NetworkStream stream)
     {
         _sessions[sessionId] = stream;
@@ -72,6 +71,7 @@ public sealed class LLMChatService : IZcspService
 
         // If we are connecting to the server (in ViaServer mode), remember this as server session
         if (_routingState.Mode == RoutingMode.ViaServer &&
+            !string.IsNullOrWhiteSpace(_routingState.ServerProtocolPeerId) &&
             remotePeerId == _routingState.ServerProtocolPeerId)
         {
             _serverSessionId = sessionId;
@@ -88,50 +88,24 @@ public sealed class LLMChatService : IZcspService
         if (await IsOllamaAvailableAsync())
             await TryCreateHostConversationAsync(sessionId, remotePeerId);
     }
-    private async Task<bool> IsOllamaAvailableAsync()
+
+    public Task OnSessionClosedAsync(Guid sessionId)
     {
-        try
+        _sessions.TryRemove(sessionId, out _);
+        _sessionConversations.TryRemove(sessionId, out _);
+
+        if (_contexts.TryRemove(sessionId, out var ctx))
         {
-            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(1.5));
-            var res = await _http.GetAsync("/api/tags", cts.Token); // cheap endpoint
-            return res.IsSuccessStatusCode;
+            // remove direct session mapping (remotePeerId -> sessionId)
+            _directSessions.TryRemove(ctx.RemoteProtocolPeerId, out _);
         }
-        catch { return false; }
+
+        // if server session closed, forget it
+        if (_serverSessionId == sessionId)
+            _serverSessionId = null;
+
+        return Task.CompletedTask;
     }
-
-    private async Task TryCreateHostConversationAsync(Guid sessionId, string remotePeerId)
-    {
-        try
-        {
-            using var scope = _scopeFactory.CreateScope();
-            var db = scope.ServiceProvider.GetRequiredService<ServiceDBContext>();
-            var peersRepo = scope.ServiceProvider.GetRequiredService<IPeerRepository>();
-
-            var remotePeer = await peersRepo.GetByProtocolPeerIdAsync(remotePeerId);
-            if (remotePeer == null)
-                return; // if you only want persistence for known peers
-
-            var convo = new LLMConversationEntity
-            {
-                Id = Guid.NewGuid(),
-                PeerId = remotePeer.PeerId,
-                Model = "phi3:latest",
-                CreatedAt = DateTime.UtcNow
-            };
-
-            db.LLMConversations.Add(convo);
-            await db.SaveChangesAsync();
-
-            _sessionConversations[sessionId] = convo.Id;
-        }
-        catch
-        {
-            // no persistence, still functional
-        }
-    }
-
-    // File: ZCL.Services.LLM/LLMChatService.cs
-    // Function: OnSessionDataAsync(...)
 
     public async Task OnSessionDataAsync(Guid sessionId, BinaryReader reader)
     {
@@ -139,9 +113,7 @@ public sealed class LLMChatService : IZcspService
 
         switch (action)
         {
-            // =========================
-            // CLIENT -> HOST (direct)  OR  SERVER -> HOST (forwarded)
-            // =========================
+            // CLIENT -> HOST (direct) OR SERVER -> HOST (forwarded)
             case "AiQuery2":
                 {
                     var requestId = BinaryCodec.ReadGuid(reader);
@@ -150,16 +122,13 @@ public sealed class LLMChatService : IZcspService
                     break;
                 }
 
-            // =========================
             // CLIENT -> SERVER (route to host)
-            // =========================
             case "AiQueryFor2":
                 {
                     var requestId = BinaryCodec.ReadGuid(reader);
                     var targetProtocolPeerId = BinaryCodec.ReadString(reader);
                     var prompt = BinaryCodec.ReadString(reader);
 
-                    // Only servers should route this.
                     if (_routingState.Role != NodeRole.Server)
                         return;
 
@@ -167,15 +136,13 @@ public sealed class LLMChatService : IZcspService
                     break;
                 }
 
-            // =========================
-            // HOST -> CLIENT (direct) OR HOST -> SERVER (to route back)
-            // =========================
+            // HOST -> CLIENT (direct) OR HOST -> SERVER (route back)
             case "AiResponse2":
                 {
                     var requestId = BinaryCodec.ReadGuid(reader);
                     var response = BinaryCodec.ReadString(reader);
 
-                    // If we are the server router, forward response back to requester
+                    // If we are the server router: forward response back to requester
                     if (_routingState.Role == NodeRole.Server &&
                         _pendingRequests.TryRemove(requestId, out var requesterSessionId) &&
                         _contexts.TryGetValue(requesterSessionId, out var requesterCtx))
@@ -205,17 +172,19 @@ public sealed class LLMChatService : IZcspService
         }
     }
 
+    // =====================================================
+    // Server router path
+    // =====================================================
+
     private async Task HandleAiQueryForAsync(
-    Guid requesterSessionId,
-    Guid requestId,
-    string targetProtocolPeerId,
-    string prompt)
+        Guid requesterSessionId,
+        Guid requestId,
+        string targetProtocolPeerId,
+        string prompt)
     {
-        // Only valid on server
         if (_routingState.Role != NodeRole.Server)
             return;
 
-        // 1) Resolve target peer in DB
         using var scope = _scopeFactory.CreateScope();
         var peersRepo = scope.ServiceProvider.GetRequiredService<IPeerRepository>();
 
@@ -223,7 +192,7 @@ public sealed class LLMChatService : IZcspService
         if (targetPeer == null)
             return;
 
-        // 2) Ensure server -> host session
+        // Ensure server -> host session exists
         await EnsureSessionAsync(targetPeer);
 
         if (!_directSessions.TryGetValue(targetProtocolPeerId, out var serverToHostSessionId))
@@ -232,10 +201,10 @@ public sealed class LLMChatService : IZcspService
         if (!_contexts.TryGetValue(serverToHostSessionId, out var hostCtx))
             return;
 
-        // 3) Remember where to route the response back to (requestId -> requester session)
+        // Remember where to route the response back to
         _pendingRequests[requestId] = requesterSessionId;
 
-        // 4) Forward request to host as AiQuery2
+        // Forward request to host as AiQuery2
         var forward = BinaryCodec.Serialize(
             ZcspMessageType.SessionData,
             serverToHostSessionId,
@@ -249,52 +218,9 @@ public sealed class LLMChatService : IZcspService
         await Framing.WriteAsync(hostCtx.Stream, forward);
     }
 
-
-    public Task OnSessionClosedAsync(Guid sessionId)
-    {
-        _sessions.TryRemove(sessionId, out _);
-        _sessionConversations.TryRemove(sessionId, out _);
-
-        if (_contexts.TryRemove(sessionId, out var ctx))
-        {
-            // remove direct session mapping (remotePeerId -> sessionId)
-            _directSessions.TryRemove(ctx.RemoteProtocolPeerId, out _);
-        }
-
-        // if server session closed, forget it
-        if (_serverSessionId == sessionId)
-            _serverSessionId = null;
-
-        return Task.CompletedTask;
-    }
-
-    // =========================
-    // CLIENT SIDE
-    // =========================
-
-    public async Task SendQueryAsync(Guid sessionId, string prompt)
-    {
-        if (!_sessions.TryGetValue(sessionId, out var stream))
-            throw new InvalidOperationException("AI session not active.");
-
-        var msg = BinaryCodec.Serialize(
-            ZcspMessageType.SessionData,
-            sessionId,
-            w =>
-            {
-                BinaryCodec.WriteString(w, "AiQuery");
-                BinaryCodec.WriteString(w, prompt);
-            });
-
-        await Framing.WriteAsync(stream, msg);
-    }
-
-    // =========================
-    // HOST SIDE
-    // =========================
-
-    // File: ZCL.Services.LLM/LLMChatService.cs
-    // Function: HandleAiQueryAsync(...)
+    // =====================================================
+    // Host path (runs Ollama)
+    // =====================================================
 
     private async Task HandleAiQueryAsync(Guid sessionId, Guid requestId, string prompt)
     {
@@ -306,9 +232,8 @@ public sealed class LLMChatService : IZcspService
             if (prompt.Length > 4000)
                 prompt = prompt[..4000];
 
-            // === HOST-SIDE SAVE: prompt ===
+            // Save prompt (host-side, if conversation exists)
             Guid? convoId = null;
-
             using (var scope = _scopeFactory.CreateScope())
             {
                 var db = scope.ServiceProvider.GetRequiredService<ServiceDBContext>();
@@ -316,7 +241,6 @@ public sealed class LLMChatService : IZcspService
                 if (_sessionConversations.TryGetValue(sessionId, out var cid))
                 {
                     convoId = cid;
-
                     db.LLMMessages.Add(new LLMMessageEntity
                     {
                         Id = Guid.NewGuid(),
@@ -325,15 +249,13 @@ public sealed class LLMChatService : IZcspService
                         IsUser = true,
                         Timestamp = DateTime.UtcNow
                     });
-
                     await db.SaveChangesAsync();
                 }
             }
 
-            // Generate response
             var reply = await GenerateLocalAsync(prompt);
 
-            // === HOST-SIDE SAVE: response ===
+            // Save response
             if (convoId.HasValue)
             {
                 using var scope2 = _scopeFactory.CreateScope();
@@ -351,7 +273,7 @@ public sealed class LLMChatService : IZcspService
                 await db2.SaveChangesAsync();
             }
 
-            // Send response back (IMPORTANT: AiResponse2 + requestId)
+            // Reply (AiResponse2 + requestId)
             var responseMsg = BinaryCodec.Serialize(
                 ZcspMessageType.SessionData,
                 sessionId,
@@ -372,44 +294,59 @@ public sealed class LLMChatService : IZcspService
         }
     }
 
-    // =========================
-    // LOCAL OLLAMA CALL
-    // =========================
-
-    public async Task<string> GenerateLocalAsync(string prompt)
+    private async Task<bool> IsOllamaAvailableAsync()
     {
         try
         {
-            var httpResponse = await _http.PostAsJsonAsync(
-                "/api/generate",
-                new
-                {
-                    model = "phi3:latest",
-                    prompt = prompt,
-                    stream = false
-                });
-
-            httpResponse.EnsureSuccessStatusCode();
-
-            var result = await httpResponse.Content
-                .ReadFromJsonAsync<OllamaResponse>();
-
-            return result?.Response?.Trim() ?? "No response.";
+            using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(1.5));
+            var res = await _http.GetAsync("/api/tags", cts.Token);
+            return res.IsSuccessStatusCode;
         }
-        catch (HttpRequestException)
+        catch { return false; }
+    }
+
+    private async Task TryCreateHostConversationAsync(Guid sessionId, string remotePeerId)
+    {
+        try
         {
-            return "AI service unavailable on this peer.";
+            using var scope = _scopeFactory.CreateScope();
+            var db = scope.ServiceProvider.GetRequiredService<ServiceDBContext>();
+            var peersRepo = scope.ServiceProvider.GetRequiredService<IPeerRepository>();
+
+            var remotePeer = await peersRepo.GetByProtocolPeerIdAsync(remotePeerId);
+            if (remotePeer == null)
+                return;
+
+            var convo = new LLMConversationEntity
+            {
+                Id = Guid.NewGuid(),
+                PeerId = remotePeer.PeerId,
+                Model = "phi3:latest",
+                CreatedAt = DateTime.UtcNow
+            };
+
+            db.LLMConversations.Add(convo);
+            await db.SaveChangesAsync();
+
+            _sessionConversations[sessionId] = convo.Id;
+        }
+        catch
+        {
+            // persistence optional
         }
     }
 
+    // =====================================================
+    // Client API
+    // =====================================================
+
     public async Task SendQueryRoutedAsync(
-    PeerNode? ownerPeer,
-    string targetProtocolPeerId,
-    string prompt,
-    CancellationToken ct = default)
+        PeerNode? ownerPeer,
+        string targetProtocolPeerId,
+        string prompt,
+        CancellationToken ct = default)
     {
         var (sid, ctx, viaServer) = await GetRouteAsync(ownerPeer, ct);
-
         var requestId = Guid.NewGuid();
 
         var msg = BinaryCodec.Serialize(
@@ -435,9 +372,8 @@ public sealed class LLMChatService : IZcspService
         await Framing.WriteAsync(ctx.Stream, msg);
     }
 
-
     private async Task<(Guid sessionId, SessionContext ctx, bool viaServer)>
-GetRouteAsync(PeerNode? directPeer, CancellationToken ct)
+        GetRouteAsync(PeerNode? directPeer, CancellationToken ct)
     {
         if (_routingState.Mode == RoutingMode.ViaServer)
         {
@@ -487,7 +423,6 @@ GetRouteAsync(PeerNode? directPeer, CancellationToken ct)
         }
     }
 
-
     public async Task<bool> EnsureServerSessionAsync(CancellationToken ct = default)
     {
         if (_routingState.Mode != RoutingMode.ViaServer)
@@ -496,10 +431,13 @@ GetRouteAsync(PeerNode? directPeer, CancellationToken ct)
         if (_serverSessionId is Guid sid && _contexts.ContainsKey(sid))
             return true;
 
+        if (string.IsNullOrWhiteSpace(_routingState.ServerProtocolPeerId))
+            return false;
+
         using var scope = _scopeFactory.CreateScope();
         var peers = scope.ServiceProvider.GetRequiredService<IPeerRepository>();
 
-        var server = await peers.GetByProtocolPeerIdAsync(_routingState.ServerProtocolPeerId!);
+        var server = await peers.GetByProtocolPeerIdAsync(_routingState.ServerProtocolPeerId);
         if (server == null)
             return false;
 
@@ -511,6 +449,34 @@ GetRouteAsync(PeerNode? directPeer, CancellationToken ct)
         catch
         {
             return false;
+        }
+    }
+
+    // =====================================================
+    // Local Ollama call
+    // =====================================================
+
+    public async Task<string> GenerateLocalAsync(string prompt)
+    {
+        try
+        {
+            var httpResponse = await _http.PostAsJsonAsync(
+                "/api/generate",
+                new
+                {
+                    model = "phi3:latest",
+                    prompt,
+                    stream = false
+                });
+
+            httpResponse.EnsureSuccessStatusCode();
+
+            var result = await httpResponse.Content.ReadFromJsonAsync<OllamaResponse>();
+            return result?.Response?.Trim() ?? "No response.";
+        }
+        catch (HttpRequestException)
+        {
+            return "AI service unavailable on this peer.";
         }
     }
 

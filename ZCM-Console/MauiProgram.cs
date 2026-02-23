@@ -185,7 +185,6 @@ public static class MauiProgram
         // =========================
         _ = app.Services.GetRequiredService<MessagingService>();
         _ = app.Services.GetRequiredService<FileSharingService>();
-        _ = app.Services.GetRequiredService<LLMChatService>();
 
         return app;
     }

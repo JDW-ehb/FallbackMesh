@@ -299,10 +299,13 @@ public sealed class LLMChatViewModel : BindableObject
         try
         {
             Status = "Thinking…";
-            if (_activeSessionId == Guid.Empty)
-                throw new InvalidOperationException("No active LLM session.");
+            if (_activePeer == null)
+                throw new InvalidOperationException("No active peer selected.");
 
-            await _llm.SendQueryAsync(_activeSessionId, text);
+            await _llm.SendQueryRoutedAsync(
+                ownerPeer: _activePeer,
+                targetProtocolPeerId: _activePeer.ProtocolPeerId,
+                prompt: text);
         }
         catch
         {

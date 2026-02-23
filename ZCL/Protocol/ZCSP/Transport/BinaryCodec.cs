@@ -73,5 +73,10 @@ namespace ZCL.Protocol.ZCSP.Protocol
 
             return (type, sessionId, timestamp, reader);
         }
+        public static void WriteGuid(BinaryWriter writer, Guid value)
+            => writer.Write(value.ToByteArray());
+
+        public static Guid ReadGuid(BinaryReader reader)
+            => new Guid(reader.ReadBytes(16));
     }
 }

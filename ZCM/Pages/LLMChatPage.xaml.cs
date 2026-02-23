@@ -51,7 +51,7 @@ public partial class LLMChatPage : ContentPage
             var service = await db.Services
                 .FirstOrDefaultAsync(s =>
                     s.PeerRefId == preselectPeer.PeerId &&
-                    s.Name == "AIChat");
+                    s.Name == "LLMChat");
 
             var model = service?.Metadata ?? "unknown";
 

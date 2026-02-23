@@ -194,7 +194,7 @@ public partial class MainPage : ContentPage
         {
             var services = db.Services
                 .Where(s => s.PeerRefId == _peer.PeerId)
-                .Select(s => s.Name == "AIChat" && s.Metadata != null
+                .Select(s => s.Name == "LLMChat" && !string.IsNullOrWhiteSpace(s.Metadata)
                     ? $"{s.Name} ({s.Metadata})"
                     : s.Name);
 

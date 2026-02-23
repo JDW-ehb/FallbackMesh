@@ -79,7 +79,8 @@ namespace ZCL.Repositories.IA
                 .ToListAsync();
 
             return services
-                .Where(s => s.Peer != null)
+                .Where(s => s.Peer != null &&
+                            s.Peer.OnlineStatus == PeerOnlineStatus.Online)
                 .Select(s => (s.Peer!, s.Metadata ?? "unknown"))
                 .ToList();
         }

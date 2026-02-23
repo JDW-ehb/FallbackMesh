@@ -75,7 +75,14 @@ public sealed class FileSharingHubViewModel : BindableObject
     _service.SetDownloadTarget(file.FileId, result.Path);
 #endif
 
-            await _service.RequestFileAsync(file.FileId);
+            if (_activePeer == null)
+                return;
+
+            // Try server-mode first (if connected to server)
+            await _service.RequestFileRoutedAsync(
+                file.FileId,
+                ownerPeer: _activePeer,
+                ownerProtocolPeerId: _activePeer.ProtocolPeerId);
         });
 
 
@@ -115,9 +122,9 @@ public sealed class FileSharingHubViewModel : BindableObject
 
         try
         {
-            await _service.EnsureSessionAsync(peer);
-            await _service.WaitForSessionBindingAsync();
-            await _service.RequestListAsync();
+            await _service.RequestListRoutedAsync(
+                ownerPeer: peer,
+                targetProtocolPeerId: peer.ProtocolPeerId);
         }
         catch (SocketException)
         {
@@ -206,7 +213,7 @@ public sealed class FileSharingHubViewModel : BindableObject
         var db = scope.ServiceProvider.GetRequiredService<ServiceDBContext>();
 
         var entity = await db.SharedFiles
-            .FirstOrDefaultAsync(f => f.FileId == file.FileId);
+            .FirstOrDefaultAsync(f => f.RemoteFileId == file.RemoteFileId);
 
         if (entity == null)
             return;
@@ -231,16 +238,19 @@ public sealed class FileSharingHubViewModel : BindableObject
         var db = scope.ServiceProvider.GetRequiredService<ServiceDBContext>();
 
         var localPeerId = await _peers.GetLocalPeerIdAsync();
-        if (localPeerId == null)
+        var localProtocolId = await _peers.GetLocalProtocolPeerIdAsync();
+
+        if (localPeerId == null || localProtocolId == null)
             return;
 
         foreach (var file in result)
         {
             var info = new FileInfo(file.FullPath);
 
-            db.SharedFiles.Add(new SharedFileEntity
+            var entity = new SharedFileEntity
             {
-                FileId = Guid.NewGuid(),
+                Id = Guid.NewGuid(),               
+                RemoteFileId = Guid.NewGuid(),     
                 PeerRefId = localPeerId.Value,
                 FileName = info.Name,
                 FileSize = info.Length,
@@ -249,7 +259,20 @@ public sealed class FileSharingHubViewModel : BindableObject
                 LocalPath = file.FullPath,
                 SharedSince = DateTime.UtcNow,
                 IsAvailable = true
-            });
+            };
+
+            db.SharedFiles.Add(entity);
+
+            // Mirror immediately (non-blocking server fallback safe)
+            await _service.MirrorUploadToServerAsync(
+                fileId: entity.RemoteFileId,
+                ownerProtocolPeerId: localProtocolId,
+                fileName: entity.FileName,
+                fileType: entity.FileType,
+                fileSize: entity.FileSize,
+                checksum: entity.Checksum,
+                sharedSinceUtc: entity.SharedSince,
+                localPath: entity.LocalPath);
         }
 
         await db.SaveChangesAsync();
@@ -278,7 +301,8 @@ public sealed class FileSharingHubViewModel : BindableObject
 
             db.SharedFiles.Add(new SharedFileEntity
             {
-                FileId = Guid.NewGuid(),
+                Id = Guid.NewGuid(),
+                RemoteFileId = Guid.NewGuid(),
                 PeerRefId = localPeerId.Value,
                 FileName = info.Name,
                 FileSize = info.Length,
@@ -312,7 +336,7 @@ public sealed class FileSharingHubViewModel : BindableObject
             {
                 Files.Add(new SharedFileItem
                 {
-                    FileId = f.FileId,
+                    FileId = f.RemoteFileId,
                     Name = f.FileName,
                     Type = f.FileType,
                     Size = f.FileSize,

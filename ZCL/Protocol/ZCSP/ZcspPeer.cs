@@ -2,6 +2,7 @@
 using System.Net;
 using System.Net.Sockets;
 using ZCL.API;
+using ZCL.Models;
 using ZCL.Protocol.ZCSP.Protocol;
 using ZCL.Protocol.ZCSP.Sessions;
 using ZCL.Protocol.ZCSP.Transport;
@@ -14,13 +15,15 @@ namespace ZCL.Protocol.ZCSP
         private string? _peerId; // resolved from DB (GUID string)
         private readonly SessionRegistry _sessions;
         private readonly IServiceScopeFactory _scopeFactory;
+        private readonly RoutingState _routing;
 
         public string PeerId => _peerId ?? "(unresolved)";
 
-        public ZcspPeer(IServiceScopeFactory scopeFactory, SessionRegistry sessions)
+        public ZcspPeer(IServiceScopeFactory scopeFactory, SessionRegistry sessions, RoutingState routing)
         {
             _scopeFactory = scopeFactory;
             _sessions = sessions;
+            _routing = routing;
         }
 
         private async Task<string> EnsurePeerIdAsync(CancellationToken ct = default)
@@ -88,7 +91,7 @@ namespace ZCL.Protocol.ZCSP
 
                     reader.ReadBytes(16); // requestId
                     var fromPeer = BinaryCodec.ReadString(reader);
-                    BinaryCodec.ReadString(reader); // toPeer
+                    var toPeer = BinaryCodec.ReadString(reader); // toPeer (keep it!)
                     var serviceName = BinaryCodec.ReadString(reader);
 
                     var service = serviceResolver(serviceName);
@@ -112,8 +115,7 @@ namespace ZCL.Protocol.ZCSP
 
                     await Framing.WriteAsync(stream, accept);
 
-                    service.BindStream(stream);
-                    await service.OnSessionStartedAsync(session.Id, fromPeer);
+                    await service.OnSessionStartedAsync(session.Id, fromPeer, stream);
 
                     await RunSessionAsync(stream, session.Id, service);
                 }
@@ -133,12 +135,38 @@ namespace ZCL.Protocol.ZCSP
         {
             var localId = await EnsurePeerIdAsync();
 
+            // ==========================
+            // ROUTING ENFORCEMENT
+            // ==========================
+            // Final destination in the protocol (who we WANT to reach)
+            var finalToPeerId = remotePeerId;
+
+            // Actual TCP target (who we CONNECT to)
+            var connectHost = host;
+            var connectPort = port;
+
+            if (_routing.Mode == RoutingMode.ViaServer)
+            {
+                if (string.IsNullOrWhiteSpace(_routing.ServerHost))
+                    throw new InvalidOperationException("Routing is ViaServer but ServerHost is null.");
+
+                if (_routing.ServerPort <= 0)
+                    throw new InvalidOperationException("Routing is ViaServer but ServerPort is invalid.");
+
+                connectHost = _routing.ServerHost!;
+                connectPort = _routing.ServerPort;
+
+                // Important: DO NOT change finalToPeerId.
+                // We still want the message routed to the real remote peer.
+            }
+
             var client = new TcpClient();
             NetworkStream? stream = null;
 
             try
             {
-               await client.ConnectAsync(host, port);
+                Console.WriteLine($"[CONNECT] Mode={_routing.Mode} Connecting to {connectHost}:{connectPort} (finalTo={finalToPeerId})");
+                await client.ConnectAsync(connectHost, connectPort);
                 stream = client.GetStream();
 
                 var request = BinaryCodec.Serialize(
@@ -148,7 +176,7 @@ namespace ZCL.Protocol.ZCSP
                     {
                         w.Write(Guid.NewGuid().ToByteArray());
                         BinaryCodec.WriteString(w, localId);
-                        BinaryCodec.WriteString(w, remotePeerId);
+                        BinaryCodec.WriteString(w, finalToPeerId);
                         BinaryCodec.WriteString(w, service.ServiceName);
                     });
 
@@ -162,8 +190,7 @@ namespace ZCL.Protocol.ZCSP
                 if (type != ZcspMessageType.ServiceResponse || sessionId == null)
                     throw new InvalidOperationException("Invalid service response.");
 
-                service.BindStream(stream);
-                await service.OnSessionStartedAsync(sessionId.Value, remotePeerId);
+                await service.OnSessionStartedAsync(sessionId.Value, finalToPeerId, stream);
 
                 _ = Task.Run(async () =>
                 {
@@ -171,26 +198,12 @@ namespace ZCL.Protocol.ZCSP
                     finally { stream.Dispose(); client.Dispose(); }
                 });
             }
-            catch (SocketException ex)
+            catch
             {
-                Console.WriteLine($"[ZCSP] Connection failed: {ex.Message}");
-
                 try { stream?.Dispose(); } catch { }
                 try { client.Dispose(); } catch { }
-
                 throw;
             }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"[ZCSP] Unexpected connection error:");
-                Console.WriteLine(ex);
-
-                try { stream?.Dispose(); } catch { }
-                try { client.Dispose(); } catch { }
-
-                throw;
-            }
-
         }
 
 

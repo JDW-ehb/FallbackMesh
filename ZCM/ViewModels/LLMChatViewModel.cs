@@ -1,4 +1,6 @@
-﻿using Microsoft.Maui.Dispatching;
+﻿// File: ZCM/ViewModels/LLMChatViewModel.cs
+
+using Microsoft.Maui.Dispatching;
 using System.Collections.ObjectModel;
 using System.Windows.Input;
 using ZCL.Models;
@@ -16,6 +18,10 @@ public sealed class LLMMessage
 
 public sealed class LLMChatViewModel : BindableObject
 {
+    // ZCSP hosting port is global in your current architecture.
+    // Keep it in ONE place so you won't accidentally use discovery/service DB ports.
+    private const int ZcspPort = 5555;
+
     private readonly ZcspPeer _peer;
     private readonly LLMChatService _llm;
     private readonly ILLMChatRepository _repo;
@@ -27,6 +33,7 @@ public sealed class LLMChatViewModel : BindableObject
     private LLMConversationItem? _activeConversation;
     private LLMPeerItem? _selectedPeer;
     private LLMConversationItem? _selectedConversation;
+    private Guid _activeSessionId = Guid.Empty;
 
     public ObservableCollection<LLMMessage> Messages { get; } = new();
     public ObservableCollection<LLMConversationItem> Conversations { get; } = new();
@@ -111,6 +118,13 @@ public sealed class LLMChatViewModel : BindableObject
         _llm = llm;
         _repo = repo;
 
+        // When LLMChatService establishes the session, we capture the sessionId.
+        _llm.SessionStarted += (sessionId, remotePeerId) =>
+        {
+            if (_activePeer?.ProtocolPeerId == remotePeerId)
+                _activeSessionId = sessionId;
+        };
+
         _llm.ResponseReceived += OnResponseAsync;
 
         StartNewConversationCommand =
@@ -185,6 +199,11 @@ public sealed class LLMChatViewModel : BindableObject
         SelectedConversation = convo;
     }
 
+    // =====================================================
+    // FIXES APPLIED HERE:
+    // 1) Always use ZcspPort (5555) instead of service.Port
+    // 2) Add an explicit connect timeout to avoid "stuck" UX
+    // =====================================================
     private async Task ActivateConversationAsync(LLMConversationItem convo)
     {
         await _lock.WaitAsync();
@@ -193,8 +212,7 @@ public sealed class LLMChatViewModel : BindableObject
         {
             _activeConversation = convo;
 
-            var result = await _repo
-                .GetLlmServiceForPeerAsync(convo.PeerId, convo.Model);
+            var result = await _repo.GetLlmServiceForPeerAsync(convo.PeerId, convo.Model);
 
             if (result == null)
             {
@@ -209,20 +227,41 @@ public sealed class LLMChatViewModel : BindableObject
             Status = "Connecting…";
             IsConnected = false;
 
-            await _peer.ConnectAsync(
+            _activeSessionId = Guid.Empty;
+
+            // ---- Connect with timeout (prevents hanging when peer/server is down) ----
+            var connectTask = _peer.ConnectAsync(
                 service.Address,
-                service.Port,
+                ZcspPort,                // IMPORTANT: global ZCSP hosting port
                 peer.ProtocolPeerId,
                 _llm);
+
+            var timeoutTask = Task.Delay(TimeSpan.FromSeconds(4));
+
+            var finished = await Task.WhenAny(connectTask, timeoutTask);
+            if (finished != connectTask)
+                throw new TimeoutException("Connect timed out.");
+
+            // propagate any socket exceptions
+            await connectTask;
+
+            // ---- Ensure session initialized ----
+            if (_activeSessionId == Guid.Empty)
+            {
+                Status = "Connected, but session not initialized.";
+                IsConnected = false;
+                return;
+            }
 
             IsConnected = true;
             Status = $"Connected ({service.Metadata})";
 
             await LoadHistoryAsync(convo.Id);
         }
-        catch
+        catch (Exception ex)
         {
-            Status = "Offline";
+            // Keep it simple for UX; you can log ex.ToString() if desired
+            Status = ex is TimeoutException ? "Offline (timeout)" : "Offline";
             IsConnected = false;
         }
         finally
@@ -272,10 +311,7 @@ public sealed class LLMChatViewModel : BindableObject
 
         if (string.IsNullOrWhiteSpace(_activeConversation.Summary))
         {
-            var title = text.Length > 40
-                ? text[..40]
-                : text;
-
+            var title = text.Length > 40 ? text[..40] : text;
             title = title.Replace("\n", " ").Trim();
 
             _activeConversation.Summary = title;
@@ -285,7 +321,13 @@ public sealed class LLMChatViewModel : BindableObject
         try
         {
             Status = "Thinking…";
-            await _llm.SendQueryAsync(text);
+            if (_activePeer == null)
+                throw new InvalidOperationException("No active peer selected.");
+
+            await _llm.SendQueryRoutedAsync(
+                ownerPeer: _activePeer,
+                targetProtocolPeerId: _activePeer.ProtocolPeerId,
+                prompt: text);
         }
         catch
         {

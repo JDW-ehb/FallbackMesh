@@ -144,7 +144,22 @@ public sealed class PeerRepository : IPeerRepository
             };
 
             _db.PeerNodes.Add(peer);
-            await _db.SaveChangesAsync(ct);
+
+            try
+            {
+                await _db.SaveChangesAsync(ct);
+            }
+            catch (DbUpdateException ex) when
+            (
+                ex.InnerException is Microsoft.Data.Sqlite.SqliteException sqlite &&
+                sqlite.SqliteErrorCode == 19 // UNIQUE constraint violation
+            )
+            {
+                // Another concurrent context inserted the same ProtocolPeerId.
+                // Re-read the existing row and return that instead.
+                peer = await _db.PeerNodes
+                    .FirstAsync(p => p.ProtocolPeerId == protocolPeerId, ct);
+            }
 
             return peer;
         }
@@ -178,7 +193,7 @@ public sealed class PeerRepository : IPeerRepository
     /// Keeps newest local row, demotes extras. Also ensures the kept row matches the provided localProtocolPeerId.
     /// Note: if you move fully to GetOrCreateLocalProtocolPeerIdAsync, this method becomes mostly redundant.
     /// </summary>
-    
+
 
     public Task<Guid?> GetLocalPeerIdAsync(CancellationToken ct = default)
     {
@@ -199,5 +214,18 @@ public sealed class PeerRepository : IPeerRepository
                 p => p.ProtocolPeerId == protocolPeerId,
                 ct);
     }
+    public Task<PeerNode?> GetByIdAsync(Guid peerId)
+    {
+        return _db.PeerNodes.FirstOrDefaultAsync(p => p.PeerId == peerId);
+    }
 
+    public async Task<string?> GetLocalProtocolPeerIdAsync(CancellationToken ct = default)
+    {
+        var local = await _db.PeerNodes
+            .Where(p => p.IsLocal)
+            .OrderByDescending(p => p.LastSeen)
+            .FirstOrDefaultAsync(ct);
+
+        return local?.ProtocolPeerId;
+    }
 }

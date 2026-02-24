@@ -10,7 +10,7 @@ namespace ZCL.Protocol.ZCSP.Transport
         /// Writes a length-prefixed frame to the stream.
         /// Frame format: [4-byte length][payload bytes]
         /// </summary>
-        public static async Task WriteAsync(NetworkStream stream, byte[] payload)
+        public static async Task WriteAsync(Stream stream, byte[] payload)
         {
             var lengthPrefix = BitConverter.GetBytes(payload.Length);
 
@@ -22,7 +22,7 @@ namespace ZCL.Protocol.ZCSP.Transport
         /// Reads a full length-prefixed frame from the stream.
         /// Returns null if the connection is closed.
         /// </summary>
-        public static async Task<byte[]?> ReadAsync(NetworkStream stream)
+        public static async Task<byte[]?> ReadAsync(Stream stream)
         {
             var lengthBuffer = new byte[4];
 
@@ -30,17 +30,27 @@ namespace ZCL.Protocol.ZCSP.Transport
                 return null;
 
             int payloadLength = BitConverter.ToInt32(lengthBuffer);
+
+            // Hard safety limits (tune as needed)
+            const int MaxFrameSize = 4 * 1024 * 1024; // 4 MB
+
+            if (payloadLength <= 0 || payloadLength > MaxFrameSize)
+                return null;
+
             var payload = new byte[payloadLength];
 
-            await ReadExactAsync(stream, payload);
+            if (await ReadExactAsync(stream, payload) == 0)
+                return null;
+
             return payload;
         }
 
         /// <summary>
         /// Reads exactly buffer.Length bytes unless the connection closes.
         /// </summary>
+
         private static async Task<int> ReadExactAsync(
-            NetworkStream stream,
+            Stream stream,
             byte[] buffer)
         {
             int offset = 0;

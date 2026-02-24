@@ -17,7 +17,7 @@ public sealed class LLMChatService : IZcspService
     public string ServiceName => "LLMChat";
 
     private readonly HttpClient _http;
-    private readonly ConcurrentDictionary<Guid, NetworkStream> _sessions = new();
+    private readonly ConcurrentDictionary<Guid, Stream> _sessions = new();
     private readonly IServiceScopeFactory _scopeFactory;
 
     // Routing (server-first, fallback direct)
@@ -39,7 +39,7 @@ public sealed class LLMChatService : IZcspService
     // sessionId -> conversationId (host-side persistence)
     private readonly ConcurrentDictionary<Guid, Guid> _sessionConversations = new();
 
-    private sealed record SessionContext(NetworkStream Stream, string RemoteProtocolPeerId);
+    private sealed record SessionContext(Stream Stream, string RemoteProtocolPeerId);
 
     public event Func<string, Task>? ResponseReceived;
     public event Action<Guid, string>? SessionStarted;
@@ -64,7 +64,7 @@ public sealed class LLMChatService : IZcspService
     // IZcspService callbacks
     // =====================================================
 
-    public async Task OnSessionStartedAsync(Guid sessionId, string remotePeerId, NetworkStream stream)
+    public async Task OnSessionStartedAsync(Guid sessionId, string remotePeerId, Stream stream)
     {
         _sessions[sessionId] = stream;
         _contexts[sessionId] = new SessionContext(stream, remotePeerId);

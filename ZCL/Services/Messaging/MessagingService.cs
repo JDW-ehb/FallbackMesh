@@ -19,7 +19,7 @@ public sealed class MessagingService : IZcspService
     private readonly ZcspPeer _peer;
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly SemaphoreSlim _sessionLock = new(1, 1);
-    private readonly ConcurrentDictionary<string, (Guid sessionId, NetworkStream stream)> _activePeers = new();
+    private readonly ConcurrentDictionary<string, (Guid sessionId, Stream stream)> _activePeers = new();
     private readonly RoutingState _routingState;
 
     public event Action<string>? SessionStarted;
@@ -145,7 +145,7 @@ public sealed class MessagingService : IZcspService
     }
 
 
-    public async Task OnSessionStartedAsync(Guid sessionId, string remotePeerId, NetworkStream stream)
+    public async Task OnSessionStartedAsync(Guid sessionId, string remotePeerId, Stream stream)
     {
         _activePeers[remotePeerId] = (sessionId, stream);
 
@@ -164,7 +164,7 @@ public sealed class MessagingService : IZcspService
 
         MessageEntity entity = default!;
 
-        NetworkStream? targetStream = null;
+        Stream? targetStream = null;
         byte[]? forwardBytes = null;
 
 

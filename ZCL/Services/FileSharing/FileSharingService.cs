@@ -53,7 +53,7 @@ public sealed class FileSharingService : IZcspService
 
 
     private sealed record SessionContext(
-    NetworkStream Stream,
+    Stream Stream,
     string RemoteProtocolPeerId,
     Guid LocalPeerDbId,
     Guid RemotePeerDbId);
@@ -184,7 +184,7 @@ public sealed class FileSharingService : IZcspService
     // IZcspService
     // =========================
 
-    public async Task OnSessionStartedAsync(Guid sessionId, string remotePeerId, NetworkStream stream)
+    public async Task OnSessionStartedAsync(Guid sessionId, string remotePeerId, Stream stream)
     {
         using var scope = _scopeFactory.CreateScope();
         var peers = scope.ServiceProvider.GetRequiredService<IPeerRepository>();
@@ -598,7 +598,7 @@ public sealed class FileSharingService : IZcspService
         await StreamFileAsync(ctx.Stream, sessionId, fileId, file.LocalPath, file.Checksum);
     }
 
-    private async Task StreamFileAsync(NetworkStream stream, Guid sessionId, Guid fileId, string path, string checksum)
+    private async Task StreamFileAsync(Stream stream, Guid sessionId, Guid fileId, string path, string checksum)
     {
         using var fs = File.OpenRead(path);
         var buffer = new byte[ChunkSize];

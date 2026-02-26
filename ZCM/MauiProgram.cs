@@ -14,6 +14,7 @@ using ZCL.Repositories.Peers;
 using ZCL.Services.FileSharing;
 using ZCL.Services.LLM;
 using ZCL.Services.Messaging;
+using ZCL.Security;
 using ZCM.Security;
 
 namespace ZCM;

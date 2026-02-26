@@ -1,5 +1,5 @@
 ﻿using Microsoft.Extensions.DependencyInjection;
-using System.IO;
+using SQLitePCL;
 using System.Net;
 using System.Net.Security;
 using System.Net.Sockets;
@@ -17,7 +17,7 @@ namespace ZCL.Protocol.ZCSP
 {
     public sealed class ZcspPeer
     {
-        private string? _peerId; // resolved from DB (GUID string)
+        private string? _peerId;
         private readonly SessionRegistry _sessions;
         private readonly IServiceScopeFactory _scopeFactory;
         private readonly RoutingState _routing;
@@ -37,6 +37,10 @@ namespace ZCL.Protocol.ZCSP
             _secretProvider = secretProvider;
         }
 
+        // =========================================================
+        // Peer Identity
+        // =========================================================
+
         private async Task<string> EnsurePeerIdAsync(CancellationToken ct = default)
         {
             if (!string.IsNullOrWhiteSpace(_peerId))
@@ -55,6 +59,10 @@ namespace ZCL.Protocol.ZCSP
 
             return _peerId!;
         }
+
+        // =========================================================
+        // Hosting
+        // =========================================================
 
         public async Task StartHostingAsync(int port, Func<string, IZcspService?> serviceResolver)
         {
@@ -88,69 +96,62 @@ namespace ZCL.Protocol.ZCSP
             try
             {
                 using (client)
+                    using var raw = client.GetStream();
+
+                var cert = LoadLocalTlsIdentity();
+                using var tls = WrapServerTls(raw);
+
+                var serverOptions = new SslServerAuthenticationOptions
                 {
-                    Stream? raw = null;
-                    SslStream? tls = null;
+                    ServerCertificate = cert,
+                    ClientCertificateRequired = true,
+                    EnabledSslProtocols = SslProtocols.Tls12 | SslProtocols.Tls13,
+                    CertificateRevocationCheckMode = X509RevocationMode.NoCheck
+                };
 
-                    try
-                    {
-                        raw = client.GetStream();
+                await WithTimeout(
+                    tls.AuthenticateAsServerAsync(serverOptions),
+                    TimeSpan.FromSeconds(8),
+                    "TLS server handshake");
 
-                        var cert = LoadLocalTlsIdentity();
-                        tls = WrapServerTls(raw);
+                var frame = await WithTimeout(
+                    Framing.ReadAsync(tls),
+                    TimeSpan.FromSeconds(8),
+                    "Initial frame read");
 
-                        var serverOptions = new SslServerAuthenticationOptions
-                        {
-                            ServerCertificate = cert,
-                            ClientCertificateRequired = true, 
-                            EnabledSslProtocols = SslProtocols.Tls12 | SslProtocols.Tls13,
-                            CertificateRevocationCheckMode = X509RevocationMode.NoCheck
-                        };
+                if (frame == null) return;
 
-                        await tls.AuthenticateAsServerAsync(serverOptions);
+                var (type, _, _, reader) = BinaryCodec.Deserialize(frame);
+                if (type != ZcspMessageType.ServiceRequest) return;
 
-                        var frame = await Framing.ReadAsync(tls);
-                        if (frame == null) return;
+                reader.ReadBytes(16);
+                var fromPeer = BinaryCodec.ReadString(reader);
+                BinaryCodec.ReadString(reader); // toPeer (unused here)
+                var serviceName = BinaryCodec.ReadString(reader);
 
-                        var (type, _, _, reader) = BinaryCodec.Deserialize(frame);
-                        if (type != ZcspMessageType.ServiceRequest) return;
+                var service = serviceResolver(serviceName);
+                if (service == null)
+                {
+                    var reject = BinaryCodec.Serialize(
+                        ZcspMessageType.ServiceResponse,
+                        Guid.Empty,
+                        w => { w.Write(false); w.Write(0L); });
 
-                        reader.ReadBytes(16); 
-                        var fromPeer = BinaryCodec.ReadString(reader);
-                        var toPeer = BinaryCodec.ReadString(reader); 
-                        var serviceName = BinaryCodec.ReadString(reader);
-
-                        var service = serviceResolver(serviceName);
-                        if (service == null)
-                        {
-                            var reject = BinaryCodec.Serialize(
-                                ZcspMessageType.ServiceResponse,
-                                Guid.Empty,
-                                w => { w.Write(false); w.Write(0L); });
-
-                            await Framing.WriteAsync(tls, reject);
-                            return;
-                        }
-
-                        var session = _sessions.Create(fromPeer, TimeSpan.FromMinutes(30));
-
-                        var accept = BinaryCodec.Serialize(
-                            ZcspMessageType.ServiceResponse,
-                            session.Id,
-                            w => { w.Write(true); w.Write(session.ExpiresAt.Ticks); });
-
-                        await Framing.WriteAsync(tls, accept);
-
-                        await service.OnSessionStartedAsync(session.Id, fromPeer, tls);
-
-                        await RunSessionAsync(tls, session.Id, service);
-                    }
-                    finally
-                    {
-                        try { tls?.Dispose(); } catch { }
-                        try { raw?.Dispose(); } catch { }
-                    }
+                    await Framing.WriteAsync(tls, reject);
+                    return;
                 }
+
+                var session = _sessions.Create(fromPeer, TimeSpan.FromMinutes(30));
+
+                var accept = BinaryCodec.Serialize(
+                    ZcspMessageType.ServiceResponse,
+                    session.Id,
+                    w => { w.Write(true); w.Write(session.ExpiresAt.Ticks); });
+
+                await Framing.WriteAsync(tls, accept);
+
+                await service.OnSessionStartedAsync(session.Id, fromPeer, tls);
+                await RunSessionAsync(tls, session.Id, service);
             }
             catch (Exception ex)
             {
@@ -159,93 +160,95 @@ namespace ZCL.Protocol.ZCSP
             }
         }
 
+        // =========================================================
+        // Client Connect
+        // =========================================================
+
         public async Task ConnectAsync(string host, int port, string remotePeerId, IZcspService service)
         {
             var localId = await EnsurePeerIdAsync();
-
-            var finalToPeerId = remotePeerId;
 
             var connectHost = host;
             var connectPort = port;
 
             if (_routing.Mode == RoutingMode.ViaServer)
             {
-                if (string.IsNullOrWhiteSpace(_routing.ServerHost))
-                    throw new InvalidOperationException("Routing is ViaServer but ServerHost is null.");
-
-                if (_routing.ServerPort <= 0)
-                    throw new InvalidOperationException("Routing is ViaServer but ServerPort is invalid.");
-
                 connectHost = _routing.ServerHost!;
                 connectPort = _routing.ServerPort;
-
             }
 
-            var client = new TcpClient();
+            using var client = new TcpClient();
 
-            try
+            Console.WriteLine($"[CONNECT] Mode={_routing.Mode} Connecting to {connectHost}:{connectPort}");
+
+            await WithTimeout(
+                client.ConnectAsync(connectHost, connectPort),
+                TimeSpan.FromSeconds(5),
+                "TCP connect");
+
+            using var raw = client.GetStream();
+            using var tls = WrapClientTls(raw);
+
+            var myCert = LoadLocalTlsIdentity();
+
+            var clientOptions = new SslClientAuthenticationOptions
             {
-                Console.WriteLine($"[CONNECT] Mode={_routing.Mode} Connecting to {connectHost}:{connectPort} (finalTo={finalToPeerId})");
-                await client.ConnectAsync(connectHost, connectPort);
+                TargetHost = connectHost,
+                ClientCertificates = new X509CertificateCollection { myCert },
+                EnabledSslProtocols = SslProtocols.Tls12 | SslProtocols.Tls13,
+                CertificateRevocationCheckMode = X509RevocationMode.NoCheck
+            };
 
-                var raw = client.GetStream();
+            await WithTimeout(
+                tls.AuthenticateAsClientAsync(clientOptions),
+                TimeSpan.FromSeconds(8),
+                "TLS client handshake");
 
-                var myCert = LoadLocalTlsIdentity();
-                var tls = WrapClientTls(raw); 
-
-                var clientOptions = new SslClientAuthenticationOptions
+            var request = BinaryCodec.Serialize(
+                ZcspMessageType.ServiceRequest,
+                null,
+                w =>
                 {
-                    TargetHost = connectHost,
-                    ClientCertificates = new X509CertificateCollection { myCert },
-                    EnabledSslProtocols = SslProtocols.Tls12 | SslProtocols.Tls13,
-                    CertificateRevocationCheckMode = X509RevocationMode.NoCheck
-                };
-
-                await tls.AuthenticateAsClientAsync(clientOptions);
-
-                var request = BinaryCodec.Serialize(
-                    ZcspMessageType.ServiceRequest,
-                    null,
-                    w =>
-                    {
-                        w.Write(Guid.NewGuid().ToByteArray());
-                        BinaryCodec.WriteString(w, localId);
-                        BinaryCodec.WriteString(w, finalToPeerId);
-                        BinaryCodec.WriteString(w, service.ServiceName);
-                    });
-
-                await Framing.WriteAsync(tls, request);
-
-                var frame = await Framing.ReadAsync(tls);
-                if (frame == null)
-                    throw new IOException("No service response (connection closed).");
-
-                var (type, sessionId, _, _) = BinaryCodec.Deserialize(frame);
-                if (type != ZcspMessageType.ServiceResponse || sessionId == null)
-                    throw new InvalidOperationException("Invalid service response.");
-
-                await service.OnSessionStartedAsync(sessionId.Value, finalToPeerId, tls);
-
-                _ = Task.Run(async () =>
-                {
-                    try
-                    {
-                        await RunSessionAsync(tls, sessionId.Value, service);
-                    }
-                    finally
-                    {
-                        try { tls.Dispose(); } catch { }
-                        try { raw.Dispose(); } catch { }
-                        try { client.Dispose(); } catch { }
-                    }
+                    w.Write(Guid.NewGuid().ToByteArray());
+                    BinaryCodec.WriteString(w, localId);
+                    BinaryCodec.WriteString(w, remotePeerId);
+                    BinaryCodec.WriteString(w, service.ServiceName);
                 });
-            }
-            catch
+
+            await Framing.WriteAsync(tls, request);
+
+            var frame = await WithTimeout(
+                Framing.ReadAsync(tls),
+                TimeSpan.FromSeconds(8),
+                "ServiceResponse read");
+
+            if (frame == null)
+                throw new IOException("No service response (connection closed).");
+
+            var (type, sessionId, _, _) = BinaryCodec.Deserialize(frame);
+
+            if (type != ZcspMessageType.ServiceResponse || sessionId == null)
+                throw new InvalidOperationException("Invalid service response.");
+
+            await service.OnSessionStartedAsync(sessionId.Value, remotePeerId, tls);
+
+            _ = Task.Run(async () =>
             {
-                try { client.Dispose(); } catch { }
-                throw;
-            }
+                try
+                {
+                    await RunSessionAsync(tls, sessionId.Value, service);
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine("[SESSION LOOP CRASH]");
+                    Console.WriteLine(ex);
+                }
+            });
         }
+
+        // =========================================================
+        // Session Loop
+        // =========================================================
 
         private async Task RunSessionAsync(Stream stream, Guid sessionId, IZcspService service)
         {
@@ -259,11 +262,7 @@ namespace ZCL.Protocol.ZCSP
                     {
                         frame = await Framing.ReadAsync(stream);
                     }
-                    catch (IOException)
-                    {
-                        break;
-                    }
-                    catch (ObjectDisposedException)
+                    catch
                     {
                         break;
                     }
@@ -283,13 +282,15 @@ namespace ZCL.Protocol.ZCSP
             finally
             {
                 try { await service.OnSessionClosedAsync(sessionId); }
-                catch {  }
+                catch { }
 
                 _sessions.Remove(sessionId);
             }
         }
 
-
+        // =========================================================
+        // TLS
+        // =========================================================
 
         private X509Certificate2 LoadLocalTlsIdentity()
         {
@@ -298,7 +299,6 @@ namespace ZCL.Protocol.ZCSP
                 throw new InvalidOperationException("TLS secret not set. Pairing required.");
 
             var baseDir = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
-            Console.WriteLine($"[TLS] Secret loaded: '{secret}'");
 
             return TlsCertificateProvider.LoadOrCreateIdentityCertificate(
                 baseDirectory: baseDir,
@@ -308,51 +308,44 @@ namespace ZCL.Protocol.ZCSP
 
         private SslStream WrapServerTls(Stream raw)
         {
-            return new SslStream(
-                raw,
-                leaveInnerStreamOpen: false,
-                userCertificateValidationCallback: (sender, cert, chain, errors) =>
+            return new SslStream(raw, false,
+                (sender, cert, chain, errors) =>
                 {
                     var secret = _secretProvider.GetSecret();
-                    if (string.IsNullOrWhiteSpace(secret))
-                    {
-                        Console.WriteLine("[TLS] Rejecting: no secret configured.");
-                        return false;
-                    }
-                    Console.WriteLine($"[TLS] Validating with secret: '{secret}'");
-
                     var x509 = cert as X509Certificate2 ?? (cert != null ? new X509Certificate2(cert) : null);
-
-                    var ok = TlsValidation.IsTrustedPeerCertificate(x509, secret, out var reason);
-                    if (!ok)
-                        Console.WriteLine($"[TLS] Rejecting client cert: {reason}");
-
-                    return ok;
+                    return TlsValidation.IsTrustedPeerCertificate(x509, secret!, out _);
                 });
         }
 
         private SslStream WrapClientTls(Stream raw)
         {
-            return new SslStream(
-                raw,
-                leaveInnerStreamOpen: false,
-                userCertificateValidationCallback: (sender, cert, chain, errors) =>
+            return new SslStream(raw, false,
+                (sender, cert, chain, errors) =>
                 {
                     var secret = _secretProvider.GetSecret();
-                    if (string.IsNullOrWhiteSpace(secret))
-                    {
-                        Console.WriteLine("[TLS] Rejecting: no secret configured.");
-                        return false;
-                    }
-
                     var x509 = cert as X509Certificate2 ?? (cert != null ? new X509Certificate2(cert) : null);
-
-                    var ok = TlsValidation.IsTrustedPeerCertificate(x509, secret, out var reason);
-                    if (!ok)
-                        Console.WriteLine($"[TLS] Rejecting server cert: {reason}");
-
-                    return ok;
+                    return TlsValidation.IsTrustedPeerCertificate(x509, secret!, out _);
                 });
+        }
+
+        // =========================================================
+        // Timeout Helper
+        // =========================================================
+
+        private static async Task WithTimeout(Task task, TimeSpan timeout, string stage)
+        {
+            var completed = await Task.WhenAny(task, Task.Delay(timeout));
+            if (completed != task)
+                throw new TimeoutException($"Timeout during {stage} after {timeout.TotalSeconds}s");
+            await task;
+        }
+
+        private static async Task<T> WithTimeout<T>(Task<T> task, TimeSpan timeout, string stage)
+        {
+            var completed = await Task.WhenAny(task, Task.Delay(timeout));
+            if (completed != task)
+                throw new TimeoutException($"Timeout during {stage} after {timeout.TotalSeconds}s");
+            return await task;
         }
     }
 }

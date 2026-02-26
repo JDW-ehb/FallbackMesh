@@ -11,6 +11,21 @@ public partial class App : Application
     {
         InitializeComponent();
 
+
+
+        AppDomain.CurrentDomain.UnhandledException += (s, e) =>
+        {
+            Console.WriteLine("UNHANDLED EXCEPTION:");
+            Console.WriteLine(e.ExceptionObject);
+        };
+
+        TaskScheduler.UnobservedTaskException += (s, e) =>
+        {
+            Console.WriteLine("UNOBSERVED TASK EXCEPTION:");
+            Console.WriteLine(e.Exception);
+            e.SetObserved();
+        };
+
         // Enable text selection for SelectableLabel
         LabelHandler.Mapper.AppendToMapping(
             "SelectableLabelMapping",
@@ -26,16 +41,6 @@ public partial class App : Application
                 }
             });
 
-        AppDomain.CurrentDomain.UnhandledException += (s, e) =>
-        {
-            System.Diagnostics.Debug.WriteLine($"[UNHANDLED] {e.ExceptionObject}");
-        };
-
-        TaskScheduler.UnobservedTaskException += (s, e) =>
-        {
-            System.Diagnostics.Debug.WriteLine($"[TASK] {e.Exception}");
-            e.SetObserved();
-        };
     }
 
     protected override Window CreateWindow(IActivationState? activationState)

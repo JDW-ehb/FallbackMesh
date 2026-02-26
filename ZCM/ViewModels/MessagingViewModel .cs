@@ -22,7 +22,6 @@ public sealed class MessagingViewModel : BindableObject
     private ConversationItem? _activeConversation;
     private string? _activeProtocolPeerId;
     private bool _sessionReady;
-    private const int MessagingPort = 5555;
 
     public ObservableCollection<ConversationItem> Conversations { get; } = new();
     public ObservableCollection<ChatMessage> Messages { get; } = new();
@@ -50,7 +49,6 @@ public sealed class MessagingViewModel : BindableObject
 
     public ICommand SendMessageCommand { get; }
 
-
     public MessagingViewModel(
         ZcspPeer peer,
         MessagingService messaging,
@@ -72,44 +70,57 @@ public sealed class MessagingViewModel : BindableObject
         _ = InitAsync();
     }
 
+    // ---------------------------
+    // Initialization
+    // ---------------------------
+
     private async Task InitAsync()
     {
         _localPeerDbId = await _chatQueries.GetLocalPeerIdAsync();
         await LoadConversationsAsync();
 
-        await Task.Delay(500);
-
         var server = _store.Peers.FirstOrDefault(p => p.Role == NodeRole.Server);
 
-        if (server != null)
-        {
-            try
-            {
-                await _messaging.EnsureSessionAsync(server.ProtocolPeerId);
-
-                StatusMessage = "Connected to server";
-            }
-            catch
-            {
-                StatusMessage = "Server offline";
-            }
-        }
-        else
+        if (server == null)
         {
             StatusMessage = "No server discovered";
+            return;
+        }
+
+        StatusMessage = "Connecting to server...";
+
+        // Background connection
+        _ = ConnectInBackgroundAsync(server.ProtocolPeerId);
+    }
+
+    private async Task ConnectInBackgroundAsync(string protocolPeerId)
+    {
+        try
+        {
+            await _messaging.EnsureSessionAsync(protocolPeerId);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine("[BACKGROUND CONNECT FAILED]");
+            Console.WriteLine(ex);
+
+            MainThread.BeginInvokeOnMainThread(() =>
+            {
+                StatusMessage = "Server offline";
+            });
         }
     }
 
+    // ---------------------------
+    // Session Events
+    // ---------------------------
 
     private void OnSessionStarted(string remoteProtocolPeerId)
     {
         MainThread.BeginInvokeOnMainThread(() =>
         {
             if (_activeProtocolPeerId == remoteProtocolPeerId)
-            {
                 SetSessionConnected();
-            }
-
         });
     }
 
@@ -145,6 +156,9 @@ public sealed class MessagingViewModel : BindableObject
         ((Command)SendMessageCommand).ChangeCanExecute();
     }
 
+    // ---------------------------
+    // Activate Conversation
+    // ---------------------------
 
     public async Task ActivateConversationFromUIAsync(ConversationItem convo)
     {
@@ -158,24 +172,13 @@ public sealed class MessagingViewModel : BindableObject
 
         await LoadChatHistoryAsync(convo.Peer);
 
-        try
-        {
-            await _messaging.EnsureSessionAsync(
-                convo.Peer.ProtocolPeerId);
-
-            SetSessionConnected();
-        }
-        catch
-        {
-            SetSessionDisconnected("Offline (history loaded).");
-
-            await TransientNotificationService.ShowAsync(
-                "Peer is not available (showing history).",
-                NotificationSeverity.Warning);
-        }
+        // Background connection
+        _ = ConnectInBackgroundAsync(convo.Peer.ProtocolPeerId);
     }
 
-
+    // ---------------------------
+    // Sending
+    // ---------------------------
 
     private async Task SendAsync()
     {
@@ -204,11 +207,12 @@ public sealed class MessagingViewModel : BindableObject
         }
     }
 
+    // ---------------------------
+    // Incoming Messages
+    // ---------------------------
 
     private void OnMessageReceived(ChatMessage msg)
     {
-
-
         MainThread.BeginInvokeOnMainThread(() =>
         {
             if (_activeProtocolPeerId == null)
@@ -223,6 +227,9 @@ public sealed class MessagingViewModel : BindableObject
         });
     }
 
+    // ---------------------------
+    // Data Loading
+    // ---------------------------
 
     private async Task LoadConversationsAsync()
     {

@@ -132,7 +132,15 @@ public static class MauiProgram
         builder.Services.AddSingleton<FileSharingService>();
 
 #if DEBUG
+        builder.Logging.ClearProviders();
+
         builder.Logging.AddDebug();
+
+        builder.Logging.SetMinimumLevel(LogLevel.Warning);
+
+        builder.Logging.AddFilter("Microsoft.EntityFrameworkCore.Database.Command", LogLevel.None);
+        builder.Logging.AddFilter("Microsoft", LogLevel.Warning);
+        builder.Logging.AddFilter("System", LogLevel.Warning);
 #endif
 
         var app = builder.Build();

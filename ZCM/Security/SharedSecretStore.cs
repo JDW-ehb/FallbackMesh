@@ -1,36 +1,22 @@
-﻿// ZCM/Security/SharedSecretStore.cs
-using Microsoft.Maui.Storage;
-using ZCL.Security;
-
-namespace ZCM.Security;
+﻿using ZCL.Security;
 
 public sealed class SharedSecretStore : ISharedSecretProvider
 {
     private const string KeyName = "zc_tls_secret_v1";
     private string? _cachedSecret;
-    private int _loadStarted; // 0/1
+    private bool _loaded;
 
     public string? GetSecret()
     {
-        if (Interlocked.Exchange(ref _loadStarted, 1) == 0)
-        {
-            _ = LoadAsync();
-        }
+        if (_loaded)
+            return _cachedSecret;
 
-        return _cachedSecret;
-    }
-
-    public void SetSecret(string secret)
-    {
-        _cachedSecret = secret;
-        _ = SecureStorage.Default.SetAsync(KeyName, secret);
-    }
-
-    private async Task LoadAsync()
-    {
         try
         {
-            _cachedSecret = await SecureStorage.Default.GetAsync(KeyName);
+            _cachedSecret = SecureStorage.Default
+                .GetAsync(KeyName)
+                .GetAwaiter()
+                .GetResult();
         }
         catch (Exception ex)
         {
@@ -38,5 +24,15 @@ public sealed class SharedSecretStore : ISharedSecretProvider
             Console.WriteLine(ex);
             _cachedSecret = null;
         }
+
+        _loaded = true;
+        return _cachedSecret;
+    }
+
+    public void SetSecret(string secret)
+    {
+        _cachedSecret = secret;
+        _loaded = true;
+        _ = SecureStorage.Default.SetAsync(KeyName, secret);
     }
 }

@@ -120,6 +120,25 @@
                     </CollectionView.ItemTemplate>
                 </CollectionView>
 
+                <Label
+                    Text="Secret"
+                    Margin="0,10,0,0"
+                    TextColor="#AAAAAA"/>
+
+                <Entry
+                    x:Name="SecretEntry"
+                    IsPassword="True"
+                    Placeholder="Enter shared secret"
+                    TextColor="White"
+                    BackgroundColor="#2A2A2A"/>
+
+                <Button
+                    Text="Start Connection"
+                    BackgroundColor="#27AE60"
+                    TextColor="White"
+                    CornerRadius="10"
+                    Clicked="OnStartConnectionClicked"/>
+
             </VerticalStackLayout>
         </Frame>
     </Grid>

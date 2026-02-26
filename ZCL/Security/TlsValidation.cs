@@ -11,7 +11,7 @@ namespace ZCL.Security
         /// Returns true if the certificate contains a valid membership tag
         /// derived from the shared secret.
         /// </summary>
-        public static bool IsTrustedPeerCertificate(X509Certificate2? cert, out string reason)
+        public static bool IsTrustedPeerCertificate(X509Certificate2? cert, string sharedSecret, out string reason)
         {
             reason = "Unknown";
 
@@ -47,7 +47,7 @@ namespace ZCL.Security
                     return false;
                 }
 
-                var expected = TlsCertificateProvider.ComputeMembershipTagHex(cert.PublicKey);
+                var expected = TlsCertificateProvider.ComputeMembershipTagHex(sharedSecret, cert.PublicKey);
 
                 if (!ConstantTimeEqualsHex(tagHex, expected))
                 {
@@ -72,8 +72,7 @@ namespace ZCL.Security
                 }
 
                 var tagHex = candidate.Substring("ZC-TAG:v1:".Length).Trim();
-                var expected = TlsCertificateProvider.ComputeMembershipTagHex(cert.PublicKey);
-
+                var expected = TlsCertificateProvider.ComputeMembershipTagHex(sharedSecret, cert.PublicKey);
                 if (!ConstantTimeEqualsHex(tagHex, expected))
                 {
                     reason = "CN tag mismatch (wrong secret).";

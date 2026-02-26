@@ -11,18 +11,21 @@ namespace ZCL.Security
     {
 
         public static X509Certificate2 LoadOrCreateIdentityCertificate(
-            string baseDirectory,
-            string? peerLabel = null,
-            string? pfxPassword = null,
-            string? pfxFileName = null)
+    string baseDirectory,
+    string sharedSecret,
+    string? peerLabel = null,
+    string? pfxPassword = null,
+    string? pfxFileName = null)
         {
-            if (string.IsNullOrWhiteSpace(baseDirectory))
-                throw new ArgumentException("baseDirectory is required.", nameof(baseDirectory));
-
             Directory.CreateDirectory(baseDirectory);
 
-            pfxFileName ??= TlsConstants.DefaultPfxFileName;
             pfxPassword ??= TlsConstants.DefaultPfxPassword;
+
+            var secretHash = Convert.ToHexString(
+                System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(sharedSecret))
+            ).Substring(0, 12);
+
+            pfxFileName ??= $"zc_tls_identity_{secretHash}.pfx";
 
             var pfxPath = Path.Combine(baseDirectory, pfxFileName);
 
@@ -33,20 +36,19 @@ namespace ZCL.Security
                     pfxPassword,
                     X509KeyStorageFlags.Exportable | X509KeyStorageFlags.PersistKeySet);
 
-                // Ensure private key is present (needed for AuthenticateAsServer)
                 if (!loaded.HasPrivateKey)
                     throw new InvalidOperationException("Loaded TLS identity cert has no private key.");
 
                 return loaded;
             }
 
-            var created = CreateSelfSignedIdentityCertificate(peerLabel);
+            var created = CreateSelfSignedIdentityCertificate(sharedSecret, peerLabel);
             SavePfx(created, pfxPath, pfxPassword);
             return created;
         }
 
 
-        public static X509Certificate2 CreateSelfSignedIdentityCertificate(string? peerLabel = null)
+        public static X509Certificate2 CreateSelfSignedIdentityCertificate(string sharedSecret, string? peerLabel = null)
         {
             peerLabel ??= Environment.MachineName;
 
@@ -77,7 +79,7 @@ namespace ZCL.Security
 
             req.CertificateExtensions.Add(new X509SubjectKeyIdentifierExtension(req.PublicKey, false));
 
-            var tagHex = ComputeMembershipTagHex(req.PublicKey);
+            var tagHex = ComputeMembershipTagHex(sharedSecret, req.PublicKey);
             var payload = $"{TlsConstants.MembershipTagPrefix}{tagHex}";
             var payloadBytes = Encoding.UTF8.GetBytes(payload);
 
@@ -99,7 +101,7 @@ namespace ZCL.Security
                 X509KeyStorageFlags.Exportable | X509KeyStorageFlags.PersistKeySet);
         }
 
-        public static string ComputeMembershipTagHex(PublicKey publicKey)
+        public static string ComputeMembershipTagHex(string sharedSecret, PublicKey publicKey)
         {
             if (publicKey == null) throw new ArgumentNullException(nameof(publicKey));
 
@@ -110,7 +112,7 @@ namespace ZCL.Security
             Buffer.BlockCopy(alg, 0, material, 0, alg.Length);
             Buffer.BlockCopy(key, 0, material, alg.Length, key.Length);
 
-            var secretBytes = Encoding.UTF8.GetBytes(TlsConstants.SharedSecret);
+            var secretBytes = Encoding.UTF8.GetBytes(sharedSecret);
             using var hmac = new HMACSHA256(secretBytes);
 
             var tag = hmac.ComputeHash(material);

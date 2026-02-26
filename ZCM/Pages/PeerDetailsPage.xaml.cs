@@ -5,6 +5,9 @@ namespace ZCM.Pages;
 [QueryProperty(nameof(Card), "Card")]
 public partial class PeerDetailsPage : ContentPage
 {
+
+
+
     private MainPage.PeerNodeCard? _card;
 
     public PeerDetailsPage()
@@ -67,5 +70,20 @@ public partial class PeerDetailsPage : ContentPage
                     });
                 break;
         }
+    }
+    private async void OnStartConnectionClicked(object sender, EventArgs e)
+    {
+        var secret = SecretEntry.Text?.Trim();
+
+        if (string.IsNullOrWhiteSpace(secret))
+        {
+            await DisplayAlert("Error", "Secret is required.", "OK");
+            return;
+        }
+
+        var secretStore = ServiceHelper.GetService<ZCM.Security.SharedSecretStore>();
+        secretStore.SetSecret(secret);
+
+        await DisplayAlert("Success", "Secret stored. Restart connection to apply.", "OK");
     }
 }

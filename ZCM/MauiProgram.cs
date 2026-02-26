@@ -60,6 +60,7 @@ public static class MauiProgram
     public static MauiApp CreateMauiApp()
     {
         var builder = MauiApp.CreateBuilder();
+
         SqlCipherInitializer.Initialize();
 
         builder
@@ -73,6 +74,9 @@ public static class MauiProgram
         var dbKey = "dev-only-key";
 
         builder.Services.AddSingleton<Config>();
+        builder.Services.AddSingleton<ZCL.Security.ISharedSecretProvider, ZCM.Security.SharedSecretStore>();
+        builder.Services.AddSingleton<ZCM.Security.SharedSecretStore>(); 
+
 
         builder.Services.AddDbContext<ServiceDBContext>((sp, options) =>
         {

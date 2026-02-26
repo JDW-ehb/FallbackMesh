@@ -21,14 +21,20 @@ namespace ZCL.Protocol.ZCSP
         private readonly SessionRegistry _sessions;
         private readonly IServiceScopeFactory _scopeFactory;
         private readonly RoutingState _routing;
+        private readonly ISharedSecretProvider _secretProvider;
 
         public string PeerId => _peerId ?? "(unresolved)";
 
-        public ZcspPeer(IServiceScopeFactory scopeFactory, SessionRegistry sessions, RoutingState routing)
+        public ZcspPeer(
+            IServiceScopeFactory scopeFactory,
+            SessionRegistry sessions,
+            RoutingState routing,
+            ISharedSecretProvider secretProvider)
         {
             _scopeFactory = scopeFactory;
             _sessions = sessions;
             _routing = routing;
+            _secretProvider = secretProvider;
         }
 
         private async Task<string> EnsurePeerIdAsync(CancellationToken ct = default)
@@ -287,11 +293,15 @@ namespace ZCL.Protocol.ZCSP
 
         private X509Certificate2 LoadLocalTlsIdentity()
         {
+            var secret = _secretProvider.GetSecret();
+            if (string.IsNullOrWhiteSpace(secret))
+                throw new InvalidOperationException("TLS secret not set. Pairing required.");
 
             var baseDir = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
 
             return TlsCertificateProvider.LoadOrCreateIdentityCertificate(
                 baseDirectory: baseDir,
+                sharedSecret: secret,
                 peerLabel: Config.Instance.PeerName);
         }
 
@@ -302,9 +312,16 @@ namespace ZCL.Protocol.ZCSP
                 leaveInnerStreamOpen: false,
                 userCertificateValidationCallback: (sender, cert, chain, errors) =>
                 {
+                    var secret = _secretProvider.GetSecret();
+                    if (string.IsNullOrWhiteSpace(secret))
+                    {
+                        Console.WriteLine("[TLS] Rejecting: no secret configured.");
+                        return false;
+                    }
+
                     var x509 = cert as X509Certificate2 ?? (cert != null ? new X509Certificate2(cert) : null);
 
-                    var ok = TlsValidation.IsTrustedPeerCertificate(x509, out var reason);
+                    var ok = TlsValidation.IsTrustedPeerCertificate(x509, secret, out var reason);
                     if (!ok)
                         Console.WriteLine($"[TLS] Rejecting client cert: {reason}");
 
@@ -319,9 +336,16 @@ namespace ZCL.Protocol.ZCSP
                 leaveInnerStreamOpen: false,
                 userCertificateValidationCallback: (sender, cert, chain, errors) =>
                 {
+                    var secret = _secretProvider.GetSecret();
+                    if (string.IsNullOrWhiteSpace(secret))
+                    {
+                        Console.WriteLine("[TLS] Rejecting: no secret configured.");
+                        return false;
+                    }
+
                     var x509 = cert as X509Certificate2 ?? (cert != null ? new X509Certificate2(cert) : null);
 
-                    var ok = TlsValidation.IsTrustedPeerCertificate(x509, out var reason);
+                    var ok = TlsValidation.IsTrustedPeerCertificate(x509, secret, out var reason);
                     if (!ok)
                         Console.WriteLine($"[TLS] Rejecting server cert: {reason}");
 

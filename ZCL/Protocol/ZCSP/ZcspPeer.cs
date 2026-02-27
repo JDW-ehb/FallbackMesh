@@ -290,14 +290,6 @@ namespace ZCL.Protocol.ZCSP
         private X509Certificate2 LoadLocalTlsIdentity()
         {
             var baseDir = ZCL.API.Config.Instance.AppDataDirectory;
-
-            var activeHex = _trustGroups.ActiveSecretHex;
-
-            if (string.IsNullOrWhiteSpace(activeHex) || activeHex.Length < 64)
-                throw new InvalidOperationException("No active trust group secret configured.");
-
-            var secretBytes = Convert.FromHexString(activeHex);
-
             var pfxPath = Path.Combine(baseDir, ZCL.Security.TlsConstants.DefaultPfxFileName);
 
             if (File.Exists(pfxPath))
@@ -311,9 +303,27 @@ namespace ZCL.Protocol.ZCSP
                     return loaded;
             }
 
+            // ✅ multi-signing secrets (Peter: Lions + Friends)
+            var signingSecrets = _trustGroups.SigningSecretsHex
+                .Where(h => !string.IsNullOrWhiteSpace(h) && h.Length >= 64)
+                .Select(Convert.FromHexString)
+                .ToList();
+
+            // ✅ safety: if someone somehow has none, fall back to enabled or throw
+            if (signingSecrets.Count == 0)
+            {
+                signingSecrets = _trustGroups.EnabledSecretsHex
+                    .Where(h => !string.IsNullOrWhiteSpace(h) && h.Length >= 64)
+                    .Select(Convert.FromHexString)
+                    .ToList();
+            }
+
+            if (signingSecrets.Count == 0)
+                throw new InvalidOperationException("No signing trust groups configured (no secrets available).");
+
             var created = ZCL.Security.TlsCertificateProvider.CreateSelfSignedIdentityCertificate(
                 peerLabel: ZCL.API.Config.Instance.PeerName,
-                membershipSecretBytes: secretBytes);
+                membershipSecretBytesList: signingSecrets);
 
             ZCL.Security.TlsCertificateProvider.SavePfx(
                 created,

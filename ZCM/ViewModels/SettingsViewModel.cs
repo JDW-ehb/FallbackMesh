@@ -95,10 +95,11 @@ public sealed class SettingsViewModel : BindableObject
             CreatedAtUtc = DateTime.UtcNow
         }).ToList();
 
-        if (incomingGroups.Count > 0 && incomingGroups.Count(x => x.IsActiveLocal) != 1)
+        // Ensure at least one signing group exists
+        if (incomingGroups.Count > 0 && incomingGroups.All(x => !x.IsActiveLocal))
         {
             var pick = incomingGroups.FirstOrDefault(x => x.IsEnabled) ?? incomingGroups.First();
-            foreach (var g in incomingGroups) g.IsActiveLocal = (g.Id == pick.Id);
+            pick.IsActiveLocal = true;
         }
 
         db.TrustGroups.RemoveRange(db.TrustGroups);
@@ -122,7 +123,6 @@ public sealed class SettingsViewModel : BindableObject
         var activeSecret = incomingGroups.FirstOrDefault(x => x.IsActiveLocal)?.SecretHex;
 
         trustCache.SetEnabledSecrets(enabledSecrets);
-        trustCache.SetActiveSecret(activeSecret);
 
         var newActiveId = incomingGroups.FirstOrDefault(x => x.IsActiveLocal)?.Id.ToString();
         if (!string.Equals(_originalActiveGroupId, newActiveId, StringComparison.Ordinal))

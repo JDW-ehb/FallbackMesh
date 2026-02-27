@@ -1,26 +1,36 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.Collections.Immutable;
-using System.Text;
-using ZCL.Security;
+using System.Linq;
+using System.Threading;
 
 namespace ZCL.Security
 {
     public sealed class TrustGroupCache
     {
-        private ImmutableArray<string> _enabledSecretsHex = ImmutableArray<string>.Empty;
-        private string? _activeSecretHex;
+        private string[] _enabledSecretsHex = Array.Empty<string>();
+        private string[] _signingSecretsHex = Array.Empty<string>(); 
 
         public IReadOnlyList<string> EnabledSecretsHex => _enabledSecretsHex;
-        public string? ActiveSecretHex => _activeSecretHex;
+        public IReadOnlyList<string> SigningSecretsHex => _signingSecretsHex;
 
         public void SetEnabledSecrets(IEnumerable<string> secretsHex)
-            => _enabledSecretsHex = secretsHex
+        {
+            var arr = (secretsHex ?? Enumerable.Empty<string>())
                 .Where(s => !string.IsNullOrWhiteSpace(s))
                 .Select(s => s.Trim())
-                .ToImmutableArray();
+                .ToArray();
 
-        public void SetActiveSecret(string? secretHex)
-            => _activeSecretHex = string.IsNullOrWhiteSpace(secretHex) ? null : secretHex.Trim();
+            Interlocked.Exchange(ref _enabledSecretsHex, arr);
+        }
+
+        public void SetSigningSecrets(IEnumerable<string> secretsHex)
+        {
+            var arr = (secretsHex ?? Enumerable.Empty<string>())
+                .Where(s => !string.IsNullOrWhiteSpace(s))
+                .Select(s => s.Trim())
+                .ToArray();
+
+            Interlocked.Exchange(ref _signingSecretsHex, arr);
+        }
     }
 }

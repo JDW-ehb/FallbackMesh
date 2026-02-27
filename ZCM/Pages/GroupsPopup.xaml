@@ -36,7 +36,7 @@
                             HeightRequest="36"/>
                 </Grid>
 
-                <Label Text="Enabled groups are trusted. One group is active for your identity."
+                <Label Text="Enabled groups are trusted. You may sign your identity with multiple groups."
                        TextColor="#AAAAAA"
                        FontSize="12" />
 
@@ -44,23 +44,25 @@
                     <CollectionView.ItemTemplate>
                         <DataTemplate>
                             <Frame Padding="12" CornerRadius="12" BackgroundColor="#2A2A2A" HasShadow="False">
-                                <Grid ColumnDefinitions="*,Auto,Auto" ColumnSpacing="12">
+                                <VerticalStackLayout Spacing="10">
 
                                     <Entry Text="{Binding Name}" TextColor="White" />
 
-                                    <HorizontalStackLayout Grid.Column="1" Spacing="8" VerticalOptions="Center">
-                                        <Label Text="Enabled" TextColor="#CCCCCC" FontSize="12" VerticalOptions="Center"/>
-                                        <Switch IsToggled="{Binding IsEnabled}" />
-                                    </HorizontalStackLayout>
+                                    <Grid ColumnDefinitions="Auto,Auto" ColumnSpacing="20">
 
-                                    <Button Grid.Column="2"
-                                            Text="{Binding IsActiveLocal, StringFormat='Active: {0}'}"
-                                            Clicked="OnSetActiveClicked"
-                                            BackgroundColor="#151515"
-                                            TextColor="White"
-                                            CornerRadius="10"
-                                            Padding="10,6"/>
-                                </Grid>
+                                        <HorizontalStackLayout Spacing="6">
+                                            <Label Text="Enabled" TextColor="#CCCCCC" FontSize="12"/>
+                                            <Switch IsToggled="{Binding IsEnabled}" />
+                                        </HorizontalStackLayout>
+
+                                        <HorizontalStackLayout Grid.Column="1" Spacing="6">
+                                            <Label Text="Sign Identity" TextColor="#CCCCCC" FontSize="12"/>
+                                            <Switch IsToggled="{Binding IsActiveLocal}" />
+                                        </HorizontalStackLayout>
+
+                                    </Grid>
+
+                                </VerticalStackLayout>
                             </Frame>
                         </DataTemplate>
                     </CollectionView.ItemTemplate>

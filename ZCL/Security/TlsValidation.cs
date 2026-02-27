@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Security.Cryptography.X509Certificates;
 using System.Text;
@@ -7,14 +8,10 @@ namespace ZCL.Security
 {
     internal static class TlsValidation
     {
-        /// <summary>
-        /// Returns true if the certificate contains a valid membership tag
-        /// derived from the shared secret.
-        /// </summary>
         public static bool IsTrustedPeerCertificate(
-             X509Certificate2? cert,
-             IEnumerable<byte[]> trustedSecrets,
-             out string reason)
+            X509Certificate2? cert,
+            IEnumerable<byte[]> trustedSecrets,
+            out string reason)
         {
             reason = "Unknown";
 
@@ -24,60 +21,61 @@ namespace ZCL.Security
                 return false;
             }
 
-            var ext = cert.Extensions
+            var tagExts = cert.Extensions
                 .OfType<X509Extension>()
-                .FirstOrDefault(e => e.Oid?.Value == TlsConstants.MembershipTagOid);
+                .Where(e => e.Oid?.Value == TlsConstants.MembershipTagOid)
+                .ToList();
 
-            if (ext == null)
+            if (tagExts.Count == 0)
             {
                 reason = "No membership proof found on certificate.";
                 return false;
             }
 
-            var payload = TryDecodeUtf8(ext.RawData);
-            if (payload == null)
+            var tagHexes = new List<string>();
+
+            foreach (var ext in tagExts)
             {
-                reason = "Membership extension present but not UTF-8.";
-                return false;
+                var payload = TryDecodeUtf8(ext.RawData);
+                if (payload == null)
+                    continue;
+
+                if (!payload.StartsWith(TlsConstants.MembershipTagPrefix, StringComparison.Ordinal))
+                    continue;
+
+                var tagHex = payload.Substring(TlsConstants.MembershipTagPrefix.Length).Trim();
+                if (!string.IsNullOrWhiteSpace(tagHex))
+                    tagHexes.Add(tagHex);
             }
 
-            if (!payload.StartsWith(TlsConstants.MembershipTagPrefix, StringComparison.Ordinal))
+            if (tagHexes.Count == 0)
             {
-                reason = "Membership extension has wrong prefix/version.";
-                return false;
-            }
-
-            var tagHex = payload.Substring(TlsConstants.MembershipTagPrefix.Length).Trim();
-            if (tagHex.Length == 0)
-            {
-                reason = "Membership extension tag missing.";
+                reason = "Membership extensions present but invalid format.";
                 return false;
             }
 
             foreach (var secret in trustedSecrets)
             {
                 var expected = TlsCertificateProvider.ComputeMembershipTagHex(cert.PublicKey, secret);
-                if (ConstantTimeEqualsHex(tagHex, expected))
+
+                foreach (var tagHex in tagHexes)
                 {
-                    reason = "Trusted (group tag ok).";
-                    return true;
+                    if (ConstantTimeEqualsHex(tagHex, expected))
+                    {
+                        reason = "Trusted (at least one group tag matched).";
+                        return true;
+                    }
                 }
             }
 
-            reason = "Membership tag mismatch (no enabled group matched).";
+            reason = "No matching group tag found (no enabled group matched).";
             return false;
         }
 
         private static string? TryDecodeUtf8(byte[] bytes)
         {
-            try
-            {
-                return Encoding.UTF8.GetString(bytes);
-            }
-            catch
-            {
-                return null;
-            }
+            try { return Encoding.UTF8.GetString(bytes); }
+            catch { return null; }
         }
 
         private static bool ConstantTimeEqualsHex(string aHex, string bHex)
@@ -90,9 +88,8 @@ namespace ZCL.Security
 
             int diff = 0;
             for (int i = 0; i < aHex.Length; i++)
-            {
                 diff |= (aHex[i] ^ bHex[i]);
-            }
+
             return diff == 0;
         }
     }

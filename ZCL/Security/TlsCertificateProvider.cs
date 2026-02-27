@@ -1,23 +1,31 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
 using System.Text;
-using ZCL.API;
 
 namespace ZCL.Security
 {
     public static class TlsCertificateProvider
     {
-
-        
-
+        // --- NEW overload: multi-group signing ---
         public static X509Certificate2 CreateSelfSignedIdentityCertificate(
-                                        string? peerLabel,
-                                        byte[] membershipSecretBytes)
+            string? peerLabel,
+            IEnumerable<byte[]> membershipSecretBytesList)
         {
             peerLabel ??= Environment.MachineName;
+
+            if (membershipSecretBytesList == null)
+                throw new ArgumentNullException(nameof(membershipSecretBytesList));
+
+            var secrets = membershipSecretBytesList
+                .Where(b => b != null && b.Length > 0)
+                .ToList();
+
+            if (secrets.Count == 0)
+                throw new ArgumentException("At least one membership secret is required.", nameof(membershipSecretBytesList));
 
             using var rsa = RSA.Create(3072);
             var subject = new X500DistinguishedName($"CN={TlsConstants.SubjectCnPrefix} - {EscapeCn(peerLabel)}");
@@ -36,11 +44,16 @@ namespace ZCL.Security
             req.CertificateExtensions.Add(new X509EnhancedKeyUsageExtension(eku, true));
             req.CertificateExtensions.Add(new X509SubjectKeyIdentifierExtension(req.PublicKey, false));
 
-            var tagHex = ComputeMembershipTagHex(req.PublicKey, membershipSecretBytes);
-            var payload = $"{TlsConstants.MembershipTagPrefix}{tagHex}";
-            var payloadBytes = Encoding.UTF8.GetBytes(payload);
+            // ✅ Add ONE membership-tag extension PER secret (same OID repeated is allowed)
+            foreach (var secretBytes in secrets)
+            {
+                var tagHex = ComputeMembershipTagHex(req.PublicKey, secretBytes);
+                var payload = $"{TlsConstants.MembershipTagPrefix}{tagHex}";
+                var payloadBytes = Encoding.UTF8.GetBytes(payload);
 
-            req.CertificateExtensions.Add(new X509Extension(new Oid(TlsConstants.MembershipTagOid), payloadBytes, critical: false));
+                req.CertificateExtensions.Add(
+                    new X509Extension(new Oid(TlsConstants.MembershipTagOid), payloadBytes, critical: false));
+            }
 
             var notBefore = DateTimeOffset.UtcNow.AddMinutes(-5);
             var notAfter = DateTimeOffset.UtcNow.AddYears(5);
@@ -53,7 +66,11 @@ namespace ZCL.Security
                 X509KeyStorageFlags.Exportable | X509KeyStorageFlags.PersistKeySet);
         }
 
-
+        // --- Keep a compatibility overload: single-secret signing ---
+        public static X509Certificate2 CreateSelfSignedIdentityCertificate(
+            string? peerLabel,
+            byte[] membershipSecretBytes)
+            => CreateSelfSignedIdentityCertificate(peerLabel, new[] { membershipSecretBytes });
 
         public static void SavePfx(X509Certificate2 cert, string pfxPath, string password)
         {
@@ -65,9 +82,7 @@ namespace ZCL.Security
         }
 
         private static string EscapeCn(string s)
-        {
-            return s.Replace(",", "_").Replace(";", "_").Replace("\n", "_").Replace("\r", "_");
-        }
+            => s.Replace(",", "_").Replace(";", "_").Replace("\n", "_").Replace("\r", "_");
 
         public static void DeleteLocalIdentityCertificate(string baseDirectory)
         {
@@ -96,6 +111,5 @@ namespace ZCL.Security
             var tag = hmac.ComputeHash(material);
             return Convert.ToHexString(tag);
         }
-
     }
 }

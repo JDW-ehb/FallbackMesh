@@ -15,8 +15,8 @@ public sealed class TrustGroupRepository : ITrustGroupRepository
     public Task<List<TrustGroupEntity>> GetEnabledAsync(CancellationToken ct = default)
         => _db.TrustGroups.Where(x => x.IsEnabled).OrderBy(x => x.Name).ToListAsync(ct);
 
-    public Task<TrustGroupEntity?> GetActiveLocalAsync(CancellationToken ct = default)
-        => _db.TrustGroups.FirstOrDefaultAsync(x => x.IsActiveLocal, ct);
+    public Task<List<TrustGroupEntity>> GetActiveLocalAsync(CancellationToken ct = default)
+        => _db.TrustGroups.Where(x => x.IsActiveLocal).OrderBy(x => x.Name).ToListAsync(ct);
 
     public async Task EnsureDefaultsAsync(CancellationToken ct = default)
     {
@@ -47,27 +47,20 @@ public sealed class TrustGroupRepository : ITrustGroupRepository
 
     public async Task UpsertAsync(IEnumerable<TrustGroupEntity> groups, CancellationToken ct = default)
     {
-        // Replace-by-key (Id) style upsert
         var incoming = groups.ToList();
         var ids = incoming.Select(x => x.Id).ToHashSet();
 
         var existing = await _db.TrustGroups.ToListAsync(ct);
 
-        // delete removed
         foreach (var ex in existing)
-        {
             if (!ids.Contains(ex.Id))
                 _db.TrustGroups.Remove(ex);
-        }
 
-        // upsert present
         foreach (var g in incoming)
         {
             var ex = existing.FirstOrDefault(x => x.Id == g.Id);
             if (ex == null)
-            {
                 _db.TrustGroups.Add(g);
-            }
             else
             {
                 ex.Name = g.Name;
@@ -77,15 +70,14 @@ public sealed class TrustGroupRepository : ITrustGroupRepository
             }
         }
 
-        // enforce single active
-        var activeCount = incoming.Count(x => x.IsActiveLocal);
-        if (activeCount != 1)
+        if (incoming.Count > 0 && incoming.All(x => !x.IsActiveLocal))
         {
-            // if bad state, pick first enabled or first
             var pick = incoming.FirstOrDefault(x => x.IsEnabled) ?? incoming.First();
-            foreach (var g in incoming) g.IsActiveLocal = (g.Id == pick.Id);
+            pick.IsActiveLocal = true;
         }
 
         await _db.SaveChangesAsync(ct);
     }
+
+
 }

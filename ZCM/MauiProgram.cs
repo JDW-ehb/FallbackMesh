@@ -169,10 +169,10 @@ public static class MauiProgram
             var cache = app.Services.GetRequiredService<TrustGroupCache>();
 
             var enabled = trustRepo.GetEnabledAsync().GetAwaiter().GetResult();
-            var active = trustRepo.GetActiveLocalAsync().GetAwaiter().GetResult();
+            var signing = trustRepo.GetActiveLocalAsync().GetAwaiter().GetResult();
 
             cache.SetEnabledSecrets(enabled.Select(x => x.SecretHex));
-            cache.SetActiveSecret(active?.SecretHex);
+            cache.SetSigningSecrets(signing.Select(x => x.SecretHex));
         }
 
         ServiceHelper.Initialize(app.Services);

@@ -30,21 +30,9 @@ public partial class GroupsPopup : ContentPage
             Name = $"Group {_vm.Groups.Count + 1}",
             SecretHex = hex,
             IsEnabled = true,
-            IsActiveLocal = _vm.Groups.Count == 0
+            IsActiveLocal = true   
         });
-
-        if (_vm.Groups.Count == 1)
-            _vm.SetActiveGroup(_vm.Groups[0].Id);
     }
 
-    private void OnSetActiveClicked(object sender, EventArgs e)
-    {
-        if (sender is not Button btn)
-            return;
 
-        if (btn.BindingContext is not TrustGroupDraftItem item)
-            return;
-
-        _vm.SetActiveGroup(item.Id);
-    }
 }

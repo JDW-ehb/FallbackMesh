@@ -8,14 +8,12 @@
 
     <Grid>
 
-        <!-- Backdrop -->
         <BoxView BackgroundColor="Transparent">
             <BoxView.GestureRecognizers>
                 <TapGestureRecognizer Tapped="OnBackdropTapped"/>
             </BoxView.GestureRecognizers>
         </BoxView>
 
-        <!-- Popup Container -->
         <Frame
             WidthRequest="600"
             Padding="24"

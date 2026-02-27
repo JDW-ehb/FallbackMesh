@@ -13,15 +13,23 @@ public static class TransientNotificationService
         await MainThread.InvokeOnMainThreadAsync(async () =>
         {
             var window = Application.Current?.Windows.FirstOrDefault();
-            if (window?.Page is not Page page)
+            if (window?.Page is not Page rootPage)
                 return;
+
+            Page? page = rootPage switch
+            {
+                Shell shell => shell.CurrentPage,
+                _ => rootPage
+            };
+
+            if (page is NavigationPage navPage)
+                page = navPage.CurrentPage;
 
             if (page is not ContentPage contentPage)
                 return;
 
-            if (contentPage.Content is not Layout rootLayout)
+            if (contentPage.Content is not Layout layout)
                 return;
-
             var background = severity switch
             {
                 NotificationSeverity.Success => Color.FromArgb("#27AE60"),
@@ -48,13 +56,13 @@ public static class TransientNotificationService
             };
 
             container.Children.Add(label);
-            rootLayout.Children.Add(container);
+            layout.Children.Add(container);
 
             await label.FadeTo(1, 200);
             await Task.Delay(durationMs);
             await label.FadeTo(0, 200);
 
-            rootLayout.Children.Remove(container);
+            layout.Children.Remove(container);
         });
     }
 }

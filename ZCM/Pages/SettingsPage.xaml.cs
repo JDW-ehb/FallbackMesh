@@ -19,14 +19,16 @@ public partial class SettingsPage : ContentPage
 
     private async void SaveButton_Clicked(object sender, EventArgs e)
     {
-        _ = TransientNotificationService.ShowAsync(
-            "Configuration saved successfully.",
-            NotificationSeverity.Success,
-            2000);
-
         await Navigation.PopModalAsync(false);
-    }
 
+        MainThread.BeginInvokeOnMainThread(async () =>
+        {
+            await TransientNotificationService.ShowAsync(
+                "Configuration saved successfully.",
+                NotificationSeverity.Success,
+                2000);
+        });
+    }
 
     private async void OnCloseClicked(object sender, EventArgs e)
     {
@@ -37,12 +39,5 @@ public partial class SettingsPage : ContentPage
     {
         await Navigation.PopModalAsync(false);
     }
-
-
-
-
-
-
-
 
 }

@@ -1,53 +1,93 @@
 <?xml version="1.0" encoding="utf-8" ?>
-<ContentPage xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
-             xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
-             x:Class="ZCM.Pages.SettingsPage"
-             BackgroundColor="#1E1E1E"
-             Title="SettingsPage">
+<ContentPage
+    xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
+    xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
+    x:Class="ZCM.Pages.SettingsPage"
+    BackgroundColor="#80000000"
+    Padding="0">
 
-    <ScrollView>
-        <VerticalStackLayout Padding="20" Spacing="15">
+    <Grid>
 
-            <Label Text="Database File" TextColor="White" />
-            <Entry Text="{Binding DBFileName}" TextColor="White" />
+        <!-- Backdrop -->
+        <BoxView BackgroundColor="Transparent">
+            <BoxView.GestureRecognizers>
+                <TapGestureRecognizer Tapped="OnBackdropTapped"/>
+            </BoxView.GestureRecognizers>
+        </BoxView>
 
-            <Label Text="Discovery Port" TextColor="White" />
-            <Entry Text="{Binding DiscoveryPort}" Keyboard="Numeric" TextColor="White" />
+        <!-- Popup Container -->
+        <Frame
+            WidthRequest="600"
+            Padding="24"
+            CornerRadius="18"
+            BackgroundColor="#1F1F1F"
+            HasShadow="True"
+            HorizontalOptions="Center"
+            VerticalOptions="Center">
 
-            <Label Text="Multicast Address" TextColor="White" />
-            <Entry Text="{Binding MulticastAddress}" TextColor="White" />
+            <ScrollView>
+                <VerticalStackLayout Spacing="15">
 
-            <Label Text="Protocol Version" TextColor="White" />
-            <Entry Text="{Binding ZCDPProtocolVersion}" Keyboard="Numeric" TextColor="White" />
+                    <Grid ColumnDefinitions="*,Auto">
+                        <Label Text="Settings"
+                               FontSize="20"
+                               FontAttributes="Bold"
+                               TextColor="White"/>
 
-            <Label Text="Discovery Timeout (ms)" TextColor="White" />
-            <Entry Text="{Binding DiscoveryTimeoutMS}" Keyboard="Numeric" TextColor="White" />
+                        <Button Grid.Column="1"
+                                Text="✕"
+                                Clicked="OnCloseClicked"
+                                BackgroundColor="#2A2A2A"
+                                TextColor="White"
+                                CornerRadius="10"
+                                Padding="10,6"/>
+                    </Grid>
 
-            <Label Text="Peer Name" TextColor="White" />
-            <Entry Text="{Binding PeerName}" TextColor="White" />
+                    <Label Text="Database File" TextColor="White" />
+                    <Entry Text="{Binding DBFileName}" TextColor="White" />
 
-            <Label Text="Services to Announce" TextColor="White" />
+                    <Label Text="Discovery Port" TextColor="White" />
+                    <Entry Text="{Binding DiscoveryPort}" Keyboard="Numeric" TextColor="White" />
 
-            <HorizontalStackLayout Spacing="10" VerticalOptions="Center">
-                <CheckBox IsChecked="{Binding AnnounceLLM}" Color="#007ACC" VerticalOptions="Center"/>
-                <Label Text="LLM" TextColor="White" VerticalOptions="Center"/>
-            </HorizontalStackLayout>
+                    <Label Text="Multicast Address" TextColor="White" />
+                    <Entry Text="{Binding MulticastAddress}" TextColor="White" />
 
-            <HorizontalStackLayout Spacing="10" VerticalOptions="Center">
-                <CheckBox IsChecked="{Binding AnnounceFileSharing}" Color="#007ACC" VerticalOptions="Center"/>
-                <Label Text="FileSharing" TextColor="White" VerticalOptions="Center"/>
-            </HorizontalStackLayout>
+                    <Label Text="Protocol Version" TextColor="White" />
+                    <Entry Text="{Binding ZCDPProtocolVersion}" Keyboard="Numeric" TextColor="White" />
 
-            <HorizontalStackLayout Spacing="10" VerticalOptions="Center">
-                <CheckBox IsChecked="{Binding AnnounceMessaging}" Color="#007ACC" VerticalOptions="Center"/>
-                <Label Text="Messaging" TextColor="White" VerticalOptions="Center"/>
-            </HorizontalStackLayout>
-            <Button Text="Save Settings"
-                    TextColor="White"
-                    BackgroundColor="#007ACC"
-                    Clicked="SaveButton_Clicked" />
+                    <Label Text="Discovery Timeout (ms)" TextColor="White" />
+                    <Entry Text="{Binding DiscoveryTimeoutMS}" Keyboard="Numeric" TextColor="White" />
 
-        </VerticalStackLayout>
-    </ScrollView>
+                    <Label Text="Peer Name" TextColor="White" />
+                    <Entry Text="{Binding PeerName}" TextColor="White" />
+
+                    <Label Text="Services to Announce" TextColor="White" />
+
+                    <HorizontalStackLayout Spacing="10">
+                        <CheckBox IsChecked="{Binding AnnounceLLM}" Color="#007ACC"/>
+                        <Label Text="LLM" TextColor="White"/>
+                    </HorizontalStackLayout>
+
+                    <HorizontalStackLayout Spacing="10">
+                        <CheckBox IsChecked="{Binding AnnounceFileSharing}" Color="#007ACC"/>
+                        <Label Text="FileSharing" TextColor="White"/>
+                    </HorizontalStackLayout>
+
+                    <HorizontalStackLayout Spacing="10">
+                        <CheckBox IsChecked="{Binding AnnounceMessaging}" Color="#007ACC"/>
+                        <Label Text="Messaging" TextColor="White"/>
+                    </HorizontalStackLayout>
+
+                    <Button Text="Save Settings"
+                            TextColor="White"
+                            BackgroundColor="#007ACC"
+                            Clicked="SaveButton_Clicked" />
+
+                </VerticalStackLayout>
+            </ScrollView>
+
+        </Frame>
+
+    </Grid>
 
 </ContentPage>

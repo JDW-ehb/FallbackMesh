@@ -12,8 +12,14 @@ public static class TransientNotificationService
     {
         await MainThread.InvokeOnMainThreadAsync(async () =>
         {
-            var page = Shell.Current?.CurrentPage as ContentPage;
-            if (page?.Content is not Layout layout)
+            var window = Application.Current?.Windows.FirstOrDefault();
+            if (window?.Page is not Page page)
+                return;
+
+            if (page is not ContentPage contentPage)
+                return;
+
+            if (contentPage.Content is not Layout rootLayout)
                 return;
 
             var background = severity switch
@@ -28,7 +34,8 @@ public static class TransientNotificationService
             {
                 VerticalOptions = LayoutOptions.End,
                 HorizontalOptions = LayoutOptions.End,
-                Margin = new Thickness(0, 0, 24, 24)
+                Margin = new Thickness(0, 0, 24, 24),
+                InputTransparent = true
             };
 
             var label = new Label
@@ -41,13 +48,13 @@ public static class TransientNotificationService
             };
 
             container.Children.Add(label);
-            layout.Children.Add(container);
+            rootLayout.Children.Add(container);
 
             await label.FadeTo(1, 200);
             await Task.Delay(durationMs);
             await label.FadeTo(0, 200);
 
-            layout.Children.Remove(container);
+            rootLayout.Children.Remove(container);
         });
     }
 }

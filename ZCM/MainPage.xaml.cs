@@ -90,7 +90,10 @@ public partial class MainPage : ContentPage
         => await Shell.Current.GoToAsync(nameof(FileSharingPage));
 
     private async void SettingsButton_Clicked(object sender, EventArgs e)
-        => await Shell.Current.GoToAsync(nameof(SettingsPage));
+    {
+        var popup = new SettingsPage();
+        await Navigation.PushModalAsync(popup, false);
+    }
 
     private async void OnPeerTapped(object sender, TappedEventArgs e)
     {

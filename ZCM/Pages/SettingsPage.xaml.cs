@@ -1,5 +1,6 @@
 using System.Diagnostics;
 using ZCL.API;
+using ZCM.Notifications;
 
 namespace ZCM.Pages;
 
@@ -11,19 +12,37 @@ public partial class SettingsPage : ContentPage
     {
         InitializeComponent();
 
-        _config = ServiceHelper.GetService<Config>();
+        _config = Config.Instance;
 
         BindingContext = _config;
     }
 
     private async void SaveButton_Clicked(object sender, EventArgs e)
     {
-
-        Debug.WriteLine("Settings saved.");
-
-        await Shell.Current.DisplayAlert(
-            "Settings",
+        _ = TransientNotificationService.ShowAsync(
             "Configuration saved successfully.",
-            "OK");
+            NotificationSeverity.Success,
+            2000);
+
+        await Navigation.PopModalAsync(false);
     }
+
+
+    private async void OnCloseClicked(object sender, EventArgs e)
+    {
+        await Navigation.PopModalAsync(false);
+    }
+
+    private async void OnBackdropTapped(object sender, EventArgs e)
+    {
+        await Navigation.PopModalAsync(false);
+    }
+
+
+
+
+
+
+
+
 }

@@ -72,7 +72,6 @@ public static class MauiProgram
 
         var dbKey = "dev-only-key";
 
-        builder.Services.AddSingleton<Config>();
 
         builder.Services.AddDbContext<ServiceDBContext>((sp, options) =>
         {

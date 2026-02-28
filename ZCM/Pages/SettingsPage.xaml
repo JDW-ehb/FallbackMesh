@@ -53,6 +53,11 @@
                     <Label Text="Discovery Timeout (ms)" TextColor="White"/>
                     <Entry Text="{Binding DiscoveryTimeoutMS}" Keyboard="Numeric" TextColor="White"/>
 
+                    <Label Text="Network Secret" TextColor="White"/>
+                    <Entry Text="{Binding NetworkSecret}"
+                           IsPassword="True"
+                           TextColor="White"/>
+
                     <!-- Management Buttons -->
 
                     <Button Text="Manage Groups (Trust)…"

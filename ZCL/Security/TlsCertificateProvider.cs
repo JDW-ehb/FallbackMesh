@@ -10,50 +10,37 @@ namespace ZCL.Security
 {
     public static class TlsCertificateProvider
     {
-        // --- NEW overload: multi-group signing ---
-        public static X509Certificate2 CreateSelfSignedIdentityCertificate(
-            string? peerLabel,
-            IEnumerable<byte[]> membershipSecretBytesList)
+        public static X509Certificate2 CreateNetworkIdentityCertificate(
+            string peerLabel,
+            byte[] networkSecret)
         {
-            peerLabel ??= Environment.MachineName;
-
-            if (membershipSecretBytesList == null)
-                throw new ArgumentNullException(nameof(membershipSecretBytesList));
-
-            var secrets = membershipSecretBytesList
-                .Where(b => b != null && b.Length > 0)
-                .ToList();
-
-            if (secrets.Count == 0)
-                throw new ArgumentException("At least one membership secret is required.", nameof(membershipSecretBytesList));
-
             using var rsa = RSA.Create(3072);
-            var subject = new X500DistinguishedName($"CN={TlsConstants.SubjectCnPrefix} - {EscapeCn(peerLabel)}");
 
-            var req = new CertificateRequest(subject, rsa, HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1);
+            var subject = new X500DistinguishedName($"CN=ZC Peer - {peerLabel}");
 
-            req.CertificateExtensions.Add(new X509BasicConstraintsExtension(false, false, 0, true));
-            req.CertificateExtensions.Add(new X509KeyUsageExtension(
-                X509KeyUsageFlags.DigitalSignature | X509KeyUsageFlags.KeyEncipherment, true));
+            var req = new CertificateRequest(subject, rsa,
+                HashAlgorithmName.SHA256,
+                RSASignaturePadding.Pkcs1);
 
-            var eku = new OidCollection
-            {
-                new Oid("1.3.6.1.5.5.7.3.1"),
-                new Oid("1.3.6.1.5.5.7.3.2"),
-            };
-            req.CertificateExtensions.Add(new X509EnhancedKeyUsageExtension(eku, true));
-            req.CertificateExtensions.Add(new X509SubjectKeyIdentifierExtension(req.PublicKey, false));
+            req.CertificateExtensions.Add(
+                new X509BasicConstraintsExtension(false, false, 0, true));
 
-            // ✅ Add ONE membership-tag extension PER secret (same OID repeated is allowed)
-            foreach (var secretBytes in secrets)
-            {
-                var tagHex = ComputeMembershipTagHex(req.PublicKey, secretBytes);
-                var payload = $"{TlsConstants.MembershipTagPrefix}{tagHex}";
-                var payloadBytes = Encoding.UTF8.GetBytes(payload);
+            req.CertificateExtensions.Add(
+                new X509KeyUsageExtension(
+                    X509KeyUsageFlags.DigitalSignature |
+                    X509KeyUsageFlags.KeyEncipherment,
+                    true));
+            var proof = new HMACSHA256(networkSecret)
+            .ComputeHash(req.PublicKey.EncodedKeyValue.RawData);
 
-                req.CertificateExtensions.Add(
-                    new X509Extension(new Oid(TlsConstants.MembershipTagOid), payloadBytes, critical: false));
-            }
+            var payload = Convert.ToHexString(proof);
+
+            req.CertificateExtensions.Add(
+                new X509Extension(
+                    new Oid("1.3.6.1.4.1.55555.1.99"),
+                    Encoding.UTF8.GetBytes(payload),
+                    false));
+
 
             var notBefore = DateTimeOffset.UtcNow.AddMinutes(-5);
             var notAfter = DateTimeOffset.UtcNow.AddYears(5);
@@ -65,12 +52,6 @@ namespace ZCL.Security
                 TlsConstants.DefaultPfxPassword,
                 X509KeyStorageFlags.Exportable | X509KeyStorageFlags.PersistKeySet);
         }
-
-        // --- Keep a compatibility overload: single-secret signing ---
-        public static X509Certificate2 CreateSelfSignedIdentityCertificate(
-            string? peerLabel,
-            byte[] membershipSecretBytes)
-            => CreateSelfSignedIdentityCertificate(peerLabel, new[] { membershipSecretBytes });
 
         public static void SavePfx(X509Certificate2 cert, string pfxPath, string password)
         {

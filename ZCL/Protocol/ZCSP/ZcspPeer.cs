@@ -4,7 +4,9 @@ using System.Net;
 using System.Net.Security;
 using System.Net.Sockets;
 using System.Security.Authentication;
+using System.Security.Cryptography;
 using System.Security.Cryptography.X509Certificates;
+using System.Text;
 using ZCL.API;
 using ZCL.Models;
 using ZCL.Protocol.ZCSP.Protocol;
@@ -289,46 +291,31 @@ namespace ZCL.Protocol.ZCSP
 
         private X509Certificate2 LoadLocalTlsIdentity()
         {
-            var baseDir = ZCL.API.Config.Instance.AppDataDirectory;
-            var pfxPath = Path.Combine(baseDir, ZCL.Security.TlsConstants.DefaultPfxFileName);
+            var baseDir = Config.Instance.AppDataDirectory;
+            var pfxPath = Path.Combine(baseDir, TlsConstants.DefaultPfxFileName);
 
             if (File.Exists(pfxPath))
             {
                 var loaded = new X509Certificate2(
                     pfxPath,
-                    ZCL.Security.TlsConstants.DefaultPfxPassword,
+                    TlsConstants.DefaultPfxPassword,
                     X509KeyStorageFlags.Exportable | X509KeyStorageFlags.PersistKeySet);
 
                 if (loaded.HasPrivateKey)
                     return loaded;
             }
 
-            // ✅ multi-signing secrets (Peter: Lions + Friends)
-            var signingSecrets = _trustGroups.SigningSecretsHex
-                .Where(h => !string.IsNullOrWhiteSpace(h) && h.Length >= 64)
-                .Select(Convert.FromHexString)
-                .ToList();
+            var networkSecretBytes = SHA256.HashData(
+                Encoding.UTF8.GetBytes(Config.Instance.NetworkSecret));
 
-            // ✅ safety: if someone somehow has none, fall back to enabled or throw
-            if (signingSecrets.Count == 0)
-            {
-                signingSecrets = _trustGroups.EnabledSecretsHex
-                    .Where(h => !string.IsNullOrWhiteSpace(h) && h.Length >= 64)
-                    .Select(Convert.FromHexString)
-                    .ToList();
-            }
+            var created = TlsCertificateProvider.CreateNetworkIdentityCertificate(
+                peerLabel: Config.Instance.PeerName,
+                networkSecret: networkSecretBytes);
 
-            if (signingSecrets.Count == 0)
-                throw new InvalidOperationException("No signing trust groups configured (no secrets available).");
-
-            var created = ZCL.Security.TlsCertificateProvider.CreateSelfSignedIdentityCertificate(
-                peerLabel: ZCL.API.Config.Instance.PeerName,
-                membershipSecretBytesList: signingSecrets);
-
-            ZCL.Security.TlsCertificateProvider.SavePfx(
+            TlsCertificateProvider.SavePfx(
                 created,
                 pfxPath,
-                ZCL.Security.TlsConstants.DefaultPfxPassword);
+                TlsConstants.DefaultPfxPassword);
 
             return created;
         }
@@ -341,31 +328,13 @@ namespace ZCL.Protocol.ZCSP
                 leaveInnerStreamOpen: false,
                 userCertificateValidationCallback: (sender, cert, chain, errors) =>
                 {
-                    Console.WriteLine("=== TLS VALIDATION (SERVER SIDE) ===");
-
                     var x509 = cert as X509Certificate2 ??
                                (cert != null ? new X509Certificate2(cert) : null);
 
                     if (x509 == null)
-                    {
-                        Console.WriteLine("No certificate provided.");
                         return false;
-                    }
 
-                    Console.WriteLine($"Subject: {x509.Subject}");
-
-                    var secrets = _trustGroups.EnabledSecretsHex
-                        .Where(h => !string.IsNullOrWhiteSpace(h) && h.Length >= 64)
-                        .Select(Convert.FromHexString)
-                        .ToList();
-
-                    var ok = ZCL.Security.TlsValidation.IsTrustedPeerCertificate(x509, secrets, out var reason);
-
-                    Console.WriteLine($"Trusted: {ok}");
-                    Console.WriteLine($"Reason: {reason}");
-                    Console.WriteLine("====================================");
-
-                    return ok;
+                    return ValidateNetworkProof(x509);
                 });
         }
 
@@ -376,36 +345,62 @@ namespace ZCL.Protocol.ZCSP
                 leaveInnerStreamOpen: false,
                 userCertificateValidationCallback: (sender, cert, chain, errors) =>
                 {
-                    Console.WriteLine("=== TLS VALIDATION (CLIENT SIDE) ===");
-
                     var x509 = cert as X509Certificate2 ??
                                (cert != null ? new X509Certificate2(cert) : null);
 
                     if (x509 == null)
-                    {
-                        Console.WriteLine("No certificate provided.");
                         return false;
-                    }
 
-                    Console.WriteLine($"Subject: {x509.Subject}");
-
-                    Console.WriteLine("Extensions:");
-                    foreach (var ext in x509.Extensions)
-                        Console.WriteLine($"  OID={ext.Oid?.Value}");
-
-                    var secrets = _trustGroups.EnabledSecretsHex
-                        .Where(h => !string.IsNullOrWhiteSpace(h) && h.Length >= 64)
-                        .Select(Convert.FromHexString)
-                        .ToList();
-
-                    var ok = ZCL.Security.TlsValidation.IsTrustedPeerCertificate(x509, secrets, out var reason);
-
-                    Console.WriteLine($"Trusted: {ok}");
-                    Console.WriteLine($"Reason: {reason}");
-                    Console.WriteLine("====================================");
-
-                    return ok;
+                    return ValidateNetworkProof(x509);
                 });
         }
+
+
+        private bool ValidateNetworkProof(X509Certificate2 cert)
+        {
+            var ext = cert.Extensions
+                .OfType<X509Extension>()
+                .FirstOrDefault(e => e.Oid?.Value == TlsConstants.NetworkProofOid);
+
+            if (ext == null)
+                return false;
+
+            string? remoteHex;
+
+            try
+            {
+                remoteHex = Encoding.UTF8.GetString(ext.RawData)?.Trim();
+            }
+            catch
+            {
+                return false;
+            }
+
+            if (string.IsNullOrWhiteSpace(remoteHex))
+                return false;
+
+            var networkSecretBytes = SHA256.HashData(
+                Encoding.UTF8.GetBytes(Config.Instance.NetworkSecret));
+
+            var expected = new HMACSHA256(networkSecretBytes)
+                .ComputeHash(cert.PublicKey.EncodedKeyValue.RawData);
+
+            var expectedHex = Convert.ToHexString(expected);
+
+            return ConstantTimeEquals(remoteHex, expectedHex);
+        }
+
+        private static bool ConstantTimeEquals(string a, string b)
+        {
+            if (a.Length != b.Length)
+                return false;
+
+            int diff = 0;
+            for (int i = 0; i < a.Length; i++)
+                diff |= a[i] ^ b[i];
+
+            return diff == 0;
+        }
+
     }
 }

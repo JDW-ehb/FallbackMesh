@@ -13,6 +13,8 @@ namespace ZCL.API
         public int DiscoveryTimeoutMS { get; set; } = 3 * 1000;
         public string PeerName { get; set; } = Environment.MachineName;
 
+        public string NetworkSecret { get; set; } = "CHANGE_ME_NETWORK_SECRET";
+
         public string AppDataDirectory { get; set; } =
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
 
@@ -28,6 +30,7 @@ namespace ZCL.API
             public ushort? ZCDPProtocolVersion { get; set; }
             public int? DiscoveryTimeoutMS { get; set; }
             public string? PeerName { get; set; }
+            public string? NetworkSecret { get; set; }
         }
 
         public void Load()
@@ -61,6 +64,9 @@ namespace ZCL.API
 
                 if (!string.IsNullOrWhiteSpace(loaded.PeerName))
                     PeerName = loaded.PeerName;
+
+                if (!string.IsNullOrWhiteSpace(loaded.NetworkSecret))
+                    NetworkSecret = loaded.NetworkSecret;
             }
             catch
             {
@@ -80,7 +86,8 @@ namespace ZCL.API
                 MulticastAddress = MulticastAddress,
                 ZCDPProtocolVersion = ZCDPProtocolVersion,
                 DiscoveryTimeoutMS = DiscoveryTimeoutMS,
-                PeerName = PeerName
+                PeerName = PeerName,
+                NetworkSecret = NetworkSecret
             };
 
             var json = JsonSerializer.Serialize(dto, new JsonSerializerOptions

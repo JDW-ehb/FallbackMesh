@@ -20,6 +20,15 @@ public sealed class SettingsViewModel : BindableObject
 
     private int _discoveryTimeoutMs;
     public int DiscoveryTimeoutMS { get => _discoveryTimeoutMs; set { _discoveryTimeoutMs = value; OnPropertyChanged(); } }
+    private string _networkSecret = "";
+
+    private string? _originalNetworkSecret;
+
+    public string NetworkSecret
+    {
+        get => _networkSecret;
+        set { _networkSecret = value; OnPropertyChanged(); }
+    }
 
     public ObservableCollection<TrustGroupDraftItem> Groups { get; } = new();
     public ObservableCollection<ServiceAnnounceDraftItem> AnnouncedServices { get; } = new();
@@ -34,7 +43,8 @@ public sealed class SettingsViewModel : BindableObject
         DiscoveryPort = Config.Instance.DiscoveryPort;
         MulticastAddress = Config.Instance.MulticastAddress;
         DiscoveryTimeoutMS = Config.Instance.DiscoveryTimeoutMS;
-        
+        NetworkSecret = Config.Instance.NetworkSecret;
+
         using var scope = ServiceHelper.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<ServiceDBContext>();
 
@@ -80,7 +90,13 @@ public sealed class SettingsViewModel : BindableObject
         Config.Instance.DiscoveryPort = DiscoveryPort;
         Config.Instance.MulticastAddress = MulticastAddress;
         Config.Instance.DiscoveryTimeoutMS = DiscoveryTimeoutMS;
+        Config.Instance.NetworkSecret = NetworkSecret;
         Config.Instance.Save();
+
+        if (!string.Equals(_originalNetworkSecret, NetworkSecret, StringComparison.Ordinal))
+        {
+            TlsCertificateProvider.DeleteLocalIdentityCertificate(Config.Instance.AppDataDirectory);
+        }
 
         using var scope = ServiceHelper.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<ServiceDBContext>();

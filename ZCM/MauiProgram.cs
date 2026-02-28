@@ -11,11 +11,11 @@ using ZCL.Protocol.ZCSP.Sessions;
 using ZCL.Repositories.IA;
 using ZCL.Repositories.Messages;
 using ZCL.Repositories.Peers;
-using ZCL.Repositories.Security;          
+using ZCL.Repositories.Security;
 using ZCL.Services.FileSharing;
 using ZCL.Services.LLM;
 using ZCL.Services.Messaging;
-using ZCL.Security;                      
+using ZCL.Security;
 using ZCM.Security;
 
 namespace ZCM;
@@ -144,8 +144,20 @@ public static class MauiProgram
             };
         });
 
+
 #if DEBUG
+        builder.Logging.ClearProviders();
         builder.Logging.AddDebug();
+
+        // Only log warnings+ from EF Core
+        builder.Logging.AddFilter("Microsoft.EntityFrameworkCore", LogLevel.Warning);
+
+        // Silence SQL command spam specifically
+        builder.Logging.AddFilter("Microsoft.EntityFrameworkCore.Database.Command", LogLevel.Warning);
+
+        // Allow your own namespaces at Debug level
+        builder.Logging.AddFilter("ZCL", LogLevel.Debug);
+        builder.Logging.AddFilter("ZCM", LogLevel.Debug);
 #endif
 
         var app = builder.Build();

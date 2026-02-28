@@ -1,5 +1,7 @@
-﻿using Microsoft.EntityFrameworkCore;
+﻿// File: ZCL/Repositories/Security/TrustGroupRepository.cs
+using Microsoft.EntityFrameworkCore;
 using System.Security.Cryptography;
+using System.Text;
 using ZCL.Models;
 
 namespace ZCL.Repositories.Security;
@@ -22,18 +24,22 @@ public sealed class TrustGroupRepository : ITrustGroupRepository
             .OrderBy(x => x.Name)
             .ToListAsync(ct);
 
+    // EnsureDefaultsAsync: deterministic Default group secret so fresh installs can talk.
     public async Task EnsureDefaultsAsync(CancellationToken ct = default)
     {
         if (await _db.TrustGroups.AnyAsync(ct))
             return;
 
-        var hex = Convert.ToHexString(RandomNumberGenerator.GetBytes(32));
+        // Deterministic, strong 256-bit default secret (same on every install)
+        const string defaultSeed = "ZC_DEFAULT_TRUST_GROUP_V1";
+        var defaultBytes = SHA256.HashData(Encoding.UTF8.GetBytes(defaultSeed));
+        var defaultHex = Convert.ToHexString(defaultBytes);
 
         _db.TrustGroups.Add(new TrustGroupEntity
         {
             Id = Guid.NewGuid(),
             Name = "Default",
-            SecretHex = hex,
+            SecretHex = defaultHex,
             IsEnabled = true,
             CreatedAtUtc = DateTime.UtcNow
         });
@@ -47,6 +53,7 @@ public sealed class TrustGroupRepository : ITrustGroupRepository
         await _db.SaveChangesAsync(ct);
     }
 
+    // UpsertAsync: keep your current behavior (delete missing, add/update present)
     public async Task UpsertAsync(IEnumerable<TrustGroupEntity> groups, CancellationToken ct = default)
     {
         var incoming = groups.ToList();

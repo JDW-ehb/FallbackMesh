@@ -2,7 +2,7 @@
 using Microsoft.Maui.Controls;
 using Microsoft.Maui.Handlers;
 using ZCM.Controls;
-
+using ZCM.Notifications;
 namespace ZCM;
 
 public partial class App : Application

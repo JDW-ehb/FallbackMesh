@@ -90,18 +90,22 @@ public partial class MainPage : ContentPage
         => await Shell.Current.GoToAsync(nameof(FileSharingPage));
 
     private async void SettingsButton_Clicked(object sender, EventArgs e)
-        => await Shell.Current.GoToAsync(nameof(SettingsPage));
+    {
+        var popup = new SettingsPage();
+        await Navigation.PushModalAsync(popup, false);
+    }
 
     private async void OnPeerTapped(object sender, TappedEventArgs e)
     {
         if (e.Parameter is not PeerNodeCard card)
             return;
 
-        await Shell.Current.GoToAsync(nameof(PeerDetailsPage),
-            new Dictionary<string, object>
-            {
-                { "Card", card }
-            });
+        var popup = new PeerDetailsPage
+        {
+            Card = card
+        };
+
+        await Navigation.PushModalAsync(popup, false);
     }
 
 

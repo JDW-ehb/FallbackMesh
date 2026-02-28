@@ -55,5 +55,16 @@ namespace ZCL.Protocol.ZCSP.Sessions
                     _sessions.TryRemove(id, out _);
             }
         }
+
+
+        public Session AddExisting(Guid id, string peerId, DateTime expiresAtUtc)
+        {
+            var session = new Session(id, peerId, expiresAtUtc);
+            _sessions[session.Id] = session;
+            return session;
+        }
+
+
+
     }
 }

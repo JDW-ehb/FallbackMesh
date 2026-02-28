@@ -32,6 +32,8 @@ public static class ServiceHelper
         var sessions = GetService<SessionRegistry>();
         var trustCache = GetService<TrustGroupCache>();
         var trustRepo = GetService<ITrustGroupRepository>();
+        var announceRepo = GetService<IAnnouncedServiceSettingsRepository>();
+        var store = GetService<DataStore>();
 
         Console.WriteLine("[SECURITY] Resetting network boundary...");
 
@@ -54,6 +56,57 @@ public static class ServiceHelper
                     _ => null
                 };
             });
+
+        Console.WriteLine("[SECURITY] Hosting restarted. Reconnecting to known peers...");
+
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                var enabledServices = await announceRepo.GetEnabledNamesAsync();
+
+                foreach (var p in store.Peers.ToList())
+                {
+                    var ip = p.IpAddress;          
+                    var remotePeerId = p.ProtocolPeerId; 
+
+                    if (string.IsNullOrWhiteSpace(ip) || string.IsNullOrWhiteSpace(remotePeerId))
+                        continue;
+
+                    await Task.Delay(50);
+
+                    foreach (var serviceName in enabledServices)
+                    {
+                        IZcspService? svc = serviceName switch
+                        {
+                            "Messaging" => GetService<MessagingService>(),
+                            "FileSharing" => GetService<FileSharingService>(),
+                            "LLMChat" => GetService<LLMChatService>(),
+                            _ => null
+                        };
+
+                        if (svc == null)
+                            continue;
+
+                        try
+                        {
+                            await peer.ConnectAsync(ip, 5555, remotePeerId, svc);
+                        }
+                        catch (UnauthorizedAccessException)
+                        {
+                        }
+                        catch (Exception ex)
+                        {
+                            Console.WriteLine($"[RECONNECT] {serviceName} -> {ip} failed: {ex.Message}");
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[RECONNECT] Loop crashed: {ex}");
+            }
+        });
 
         Console.WriteLine("[SECURITY] Boundary reset complete.");
     }

@@ -260,9 +260,10 @@ namespace ZCL.Protocol.ZCSP
 
                 await tls.AuthenticateAsClientAsync(clientOptions);
 
-                // IMPORTANT: proof is bound to *our* cert public key so the server can verify against tls.RemoteCertificate
+                // Group auth layer
                 await SendGroupAuthAsync(tls, myCert);
 
+                // Send service request
                 var request = BinaryCodec.Serialize(
                     ZcspMessageType.ServiceRequest,
                     null,
@@ -276,20 +277,33 @@ namespace ZCL.Protocol.ZCSP
 
                 await Framing.WriteAsync(tls, request);
 
+                // Read service response
                 var frame = await Framing.ReadAsync(tls);
                 if (frame == null)
                     throw new IOException("No service response (connection closed).");
 
-                var (type, sessionId, _, _) = BinaryCodec.Deserialize(frame);
+                var (type, sessionId, _, reader) = BinaryCodec.Deserialize(frame);
                 if (type != ZcspMessageType.ServiceResponse || sessionId == null)
                     throw new InvalidOperationException("Invalid service response.");
 
-                await service.OnSessionStartedAsync(sessionId.Value, finalToPeerId, tls);
+                // Read payload (this was previously ignored)
+                var ok = reader.ReadBoolean();
+                var expiresTicks = reader.ReadInt64();
 
-                if (_sessions.TryGet(sessionId.Value, out var session))
-                {
-                    session.AttachTransport(tls);
-                }
+                if (!ok)
+                    throw new UnauthorizedAccessException("Remote rejected service request.");
+
+                var expiresAtUtc = new DateTime(expiresTicks, DateTimeKind.Utc);
+
+                // Register outbound session so ClearAll() can kill it later
+                var session = _sessions.AddExisting(
+                    sessionId.Value,
+                    finalToPeerId,
+                    expiresAtUtc);
+
+                session.AttachTransport(tls);
+
+                await service.OnSessionStartedAsync(sessionId.Value, finalToPeerId, tls);
 
                 _ = Task.Run(async () =>
                 {

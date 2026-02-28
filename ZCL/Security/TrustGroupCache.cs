@@ -1,5 +1,4 @@
-﻿using System;
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 
@@ -8,10 +7,8 @@ namespace ZCL.Security
     public sealed class TrustGroupCache
     {
         private string[] _enabledSecretsHex = Array.Empty<string>();
-        private string[] _signingSecretsHex = Array.Empty<string>(); 
 
         public IReadOnlyList<string> EnabledSecretsHex => _enabledSecretsHex;
-        public IReadOnlyList<string> SigningSecretsHex => _signingSecretsHex;
 
         public void SetEnabledSecrets(IEnumerable<string> secretsHex)
         {
@@ -21,16 +18,6 @@ namespace ZCL.Security
                 .ToArray();
 
             Interlocked.Exchange(ref _enabledSecretsHex, arr);
-        }
-
-        public void SetSigningSecrets(IEnumerable<string> secretsHex)
-        {
-            var arr = (secretsHex ?? Enumerable.Empty<string>())
-                .Where(s => !string.IsNullOrWhiteSpace(s))
-                .Select(s => s.Trim())
-                .ToArray();
-
-            Interlocked.Exchange(ref _signingSecretsHex, arr);
         }
     }
 }

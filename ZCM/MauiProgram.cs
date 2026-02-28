@@ -165,14 +165,11 @@ public static class MauiProgram
             var trustRepo = scope.ServiceProvider.GetRequiredService<ITrustGroupRepository>();
             trustRepo.EnsureDefaultsAsync().GetAwaiter().GetResult();
 
-            // hydrate TLS trust cache
+            // hydrate group trust cache
             var cache = app.Services.GetRequiredService<TrustGroupCache>();
 
             var enabled = trustRepo.GetEnabledAsync().GetAwaiter().GetResult();
-            var signing = trustRepo.GetActiveLocalAsync().GetAwaiter().GetResult();
-
             cache.SetEnabledSecrets(enabled.Select(x => x.SecretHex));
-            cache.SetSigningSecrets(signing.Select(x => x.SecretHex));
         }
 
         ServiceHelper.Initialize(app.Services);

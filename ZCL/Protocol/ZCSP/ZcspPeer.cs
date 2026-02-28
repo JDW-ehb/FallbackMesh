@@ -107,6 +107,12 @@ namespace ZCL.Protocol.ZCSP
 
                         await tls.AuthenticateAsServerAsync(serverOptions);
 
+                        if (!await PerformGroupAuthorizationAsync(tls))
+                        {
+                            client.Close();
+                            return;
+                        }
+
                         var frame = await Framing.ReadAsync(tls);
                         if (frame == null) return;
 
@@ -200,6 +206,8 @@ namespace ZCL.Protocol.ZCSP
                 };
 
                 await tls.AuthenticateAsClientAsync(clientOptions);
+
+                await SendGroupAuthAsync(tls);
 
                 var request = BinaryCodec.Serialize(
                     ZcspMessageType.ServiceRequest,
@@ -400,6 +408,103 @@ namespace ZCL.Protocol.ZCSP
                 diff |= a[i] ^ b[i];
 
             return diff == 0;
+        }
+
+        private async Task<bool> PerformGroupAuthorizationAsync(SslStream tls)
+        {
+            // Step 1: read client proof
+            var frame = await Framing.ReadAsync(tls);
+            if (frame == null)
+                return false;
+
+            var (type, _, _, reader) = BinaryCodec.Deserialize(frame);
+            if (type != ZcspMessageType.GroupAuthRequest)
+                return false;
+
+            var groupIdBytes = reader.ReadBytes(16);
+            if (groupIdBytes.Length != 16)
+                return false;
+
+            var groupId = new Guid(groupIdBytes);
+            var proofHex = BinaryCodec.ReadString(reader);
+
+            var enabledGroups = GetEnabledGroups();
+
+            var group = enabledGroups.FirstOrDefault(g => g.Id == groupId);
+            if (group == null)
+                return false;
+
+            var secretBytes = Convert.FromHexString(group.SecretHex);
+
+            var remoteCert = new X509Certificate2(tls.RemoteCertificate!);
+
+            var expected = ComputeGroupProof(secretBytes, remoteCert);
+
+            var expectedHex = Convert.ToHexString(expected);
+
+            if (!ConstantTimeEquals(proofHex, expectedHex))
+                return false;
+
+            // respond success
+            var response = BinaryCodec.Serialize(
+                ZcspMessageType.GroupAuthResponse,
+                null,
+                w => w.Write(true));
+
+            await Framing.WriteAsync(tls, response);
+
+            return true;
+        }
+
+        private List<TrustGroupEntity> GetEnabledGroups()
+        {
+            using var scope = _scopeFactory.CreateScope();
+            var db = scope.ServiceProvider.GetRequiredService<ServiceDBContext>();
+            return db.TrustGroups.Where(x => x.IsEnabled).ToList();
+        }
+
+        private static byte[] ComputeGroupProof(byte[] secret, X509Certificate2 cert)
+        {
+            return new HMACSHA256(secret)
+                .ComputeHash(cert.PublicKey.EncodedKeyValue.RawData);
+        }
+
+        private async Task SendGroupAuthAsync(SslStream tls)
+        {
+            var activeGroups = GetEnabledGroups();
+            if (activeGroups.Count == 0)
+                throw new InvalidOperationException("No enabled groups.");
+
+            foreach (var group in activeGroups)
+            {
+                var secretBytes = Convert.FromHexString(group.SecretHex);
+                var localCert = LoadLocalTlsIdentity();
+                var proof = ComputeGroupProof(secretBytes, localCert);
+                var frame = BinaryCodec.Serialize(
+                    ZcspMessageType.GroupAuthRequest,
+                    null,
+                    w =>
+                    {
+                        w.Write(group.Id.ToByteArray());
+                        BinaryCodec.WriteString(w, Convert.ToHexString(proof));
+                    });
+
+                await Framing.WriteAsync(tls, frame);
+
+                var response = await Framing.ReadAsync(tls);
+                if (response == null)
+                    continue;
+
+                var (type, _, _, reader) = BinaryCodec.Deserialize(response);
+                if (type != ZcspMessageType.GroupAuthResponse)
+                    continue;
+
+                var ok = reader.ReadBoolean();
+                if (ok)
+                    return; // success
+            }
+
+            throw new UnauthorizedAccessException("No shared trust group.");
         }
 
     }

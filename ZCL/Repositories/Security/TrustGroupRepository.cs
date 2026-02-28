@@ -7,24 +7,27 @@ namespace ZCL.Repositories.Security;
 public sealed class TrustGroupRepository : ITrustGroupRepository
 {
     private readonly ServiceDBContext _db;
-    public TrustGroupRepository(ServiceDBContext db) => _db = db;
+
+    public TrustGroupRepository(ServiceDBContext db)
+        => _db = db;
 
     public Task<List<TrustGroupEntity>> GetAllAsync(CancellationToken ct = default)
-        => _db.TrustGroups.OrderBy(x => x.Name).ToListAsync(ct);
+        => _db.TrustGroups
+            .OrderBy(x => x.Name)
+            .ToListAsync(ct);
 
     public Task<List<TrustGroupEntity>> GetEnabledAsync(CancellationToken ct = default)
-        => _db.TrustGroups.Where(x => x.IsEnabled).OrderBy(x => x.Name).ToListAsync(ct);
-
-    public Task<List<TrustGroupEntity>> GetActiveLocalAsync(CancellationToken ct = default)
-        => _db.TrustGroups.Where(x => x.IsActiveLocal).OrderBy(x => x.Name).ToListAsync(ct);
+        => _db.TrustGroups
+            .Where(x => x.IsEnabled)
+            .OrderBy(x => x.Name)
+            .ToListAsync(ct);
 
     public async Task EnsureDefaultsAsync(CancellationToken ct = default)
     {
         if (await _db.TrustGroups.AnyAsync(ct))
             return;
 
-        var bytes = RandomNumberGenerator.GetBytes(32);
-        var hex = Convert.ToHexString(bytes);
+        var hex = Convert.ToHexString(RandomNumberGenerator.GetBytes(32));
 
         _db.TrustGroups.Add(new TrustGroupEntity
         {
@@ -32,7 +35,6 @@ public sealed class TrustGroupRepository : ITrustGroupRepository
             Name = "Default",
             SecretHex = hex,
             IsEnabled = true,
-            IsActiveLocal = true,
             CreatedAtUtc = DateTime.UtcNow
         });
 
@@ -52,32 +54,28 @@ public sealed class TrustGroupRepository : ITrustGroupRepository
 
         var existing = await _db.TrustGroups.ToListAsync(ct);
 
+        // Remove deleted groups
         foreach (var ex in existing)
             if (!ids.Contains(ex.Id))
                 _db.TrustGroups.Remove(ex);
 
+        // Add / update
         foreach (var g in incoming)
         {
             var ex = existing.FirstOrDefault(x => x.Id == g.Id);
+
             if (ex == null)
+            {
                 _db.TrustGroups.Add(g);
+            }
             else
             {
                 ex.Name = g.Name;
                 ex.SecretHex = g.SecretHex;
                 ex.IsEnabled = g.IsEnabled;
-                ex.IsActiveLocal = g.IsActiveLocal;
             }
-        }
-
-        if (incoming.Count > 0 && incoming.All(x => !x.IsActiveLocal))
-        {
-            var pick = incoming.FirstOrDefault(x => x.IsEnabled) ?? incoming.First();
-            pick.IsActiveLocal = true;
         }
 
         await _db.SaveChangesAsync(ct);
     }
-
-
 }

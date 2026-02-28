@@ -5,12 +5,14 @@
     BackgroundColor="#80000000">
 
     <Grid>
+        <!-- Backdrop -->
         <BoxView BackgroundColor="Transparent">
             <BoxView.GestureRecognizers>
                 <TapGestureRecognizer Tapped="OnBackdropTapped"/>
             </BoxView.GestureRecognizers>
         </BoxView>
 
+        <!-- Popup -->
         <Frame WidthRequest="700"
                Padding="20"
                CornerRadius="18"
@@ -21,11 +23,13 @@
 
             <VerticalStackLayout Spacing="14">
 
+                <!-- Header -->
                 <Grid ColumnDefinitions="*,Auto">
                     <Label Text="Groups (Trust)"
                            FontSize="20"
                            FontAttributes="Bold"
                            TextColor="White"/>
+
                     <Button Grid.Column="1"
                             Text="✕"
                             Clicked="OnCloseClicked"
@@ -36,38 +40,83 @@
                             HeightRequest="36"/>
                 </Grid>
 
-                <Label Text="Enabled groups are trusted. You may sign your identity with multiple groups."
+                <!-- Description -->
+                <Label Text="Enabled groups are trusted. Peers sharing at least one enabled group may communicate."
                        TextColor="#AAAAAA"
                        FontSize="12" />
 
-                <CollectionView ItemsSource="{Binding Groups}" SelectionMode="None">
+                <!-- Groups List -->
+                <CollectionView ItemsSource="{Binding Groups}"
+                                SelectionMode="None">
+
                     <CollectionView.ItemTemplate>
                         <DataTemplate>
-                            <Frame Padding="12" CornerRadius="12" BackgroundColor="#2A2A2A" HasShadow="False">
+
+                            <Frame Padding="12"
+                                   CornerRadius="12"
+                                   BackgroundColor="#2A2A2A"
+                                   HasShadow="False">
+
                                 <VerticalStackLayout Spacing="10">
 
-                                    <Entry Text="{Binding Name}" TextColor="White" />
+                                    <!-- Group Name -->
+                                    <Entry Text="{Binding Name}"
+                                           TextColor="White"
+                                           Placeholder="Group Name" />
 
-                                    <Grid ColumnDefinitions="Auto,Auto" ColumnSpacing="20">
+                                    <!-- Secret with Show Toggle -->
+                                    <Grid ColumnDefinitions="*,Auto"
+                                          ColumnSpacing="8">
 
-                                        <HorizontalStackLayout Spacing="6">
-                                            <Label Text="Enabled" TextColor="#CCCCCC" FontSize="12"/>
-                                            <Switch IsToggled="{Binding IsEnabled}" />
-                                        </HorizontalStackLayout>
+                                        <Entry Grid.Column="0"
+                                               Text="{Binding SecretHex}"
+                                               IsPassword="True"
+                                               TextColor="White"
+                                               Placeholder="Group Secret (hex)"
+                                               x:Name="SecretEntry"/>
 
-                                        <HorizontalStackLayout Grid.Column="1" Spacing="6">
-                                            <Label Text="Sign Identity" TextColor="#CCCCCC" FontSize="12"/>
-                                            <Switch IsToggled="{Binding IsActiveLocal}" />
-                                        </HorizontalStackLayout>
-
+                                        <Button Grid.Column="1"
+                                                Text="👁"
+                                                Clicked="OnToggleSecretClicked"
+                                                BackgroundColor="#333333"
+                                                TextColor="White"
+                                                CornerRadius="8"
+                                                WidthRequest="40"/>
                                     </Grid>
+
+                                    <!-- Secret Actions -->
+                                    <HorizontalStackLayout Spacing="8">
+
+                                        <Button Text="Copy"
+                                                Clicked="OnCopySecretClicked"
+                                                BackgroundColor="#333333"
+                                                TextColor="White"
+                                                CornerRadius="8" />
+
+                                        <Button Text="Regenerate"
+                                                Clicked="OnRegenerateSecretClicked"
+                                                BackgroundColor="#333333"
+                                                TextColor="White"
+                                                CornerRadius="8" />
+
+                                    </HorizontalStackLayout>
+
+                                    <!-- Enabled Switch -->
+                                    <HorizontalStackLayout Spacing="6">
+                                        <Label Text="Enabled"
+                                               TextColor="#CCCCCC"
+                                               FontSize="12" />
+                                        <Switch IsToggled="{Binding IsEnabled}" />
+                                    </HorizontalStackLayout>
 
                                 </VerticalStackLayout>
                             </Frame>
+
                         </DataTemplate>
                     </CollectionView.ItemTemplate>
                 </CollectionView>
 
+                <!-- Add Group -->
                 <Button Text="+ Add Group"
                         Clicked="OnAddGroupClicked"
                         BackgroundColor="#27AE60"

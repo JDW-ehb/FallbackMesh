@@ -1,5 +1,4 @@
 ﻿using System.Collections.ObjectModel;
-using System.Security.Cryptography;
 using Microsoft.EntityFrameworkCore;
 using ZCL.API;
 using ZCL.Models;
@@ -10,18 +9,34 @@ namespace ZCM.ViewModels;
 public sealed class SettingsViewModel : BindableObject
 {
     private string _peerName = "";
-    public string PeerName { get => _peerName; set { _peerName = value; OnPropertyChanged(); } }
+    public string PeerName
+    {
+        get => _peerName;
+        set { _peerName = value; OnPropertyChanged(); }
+    }
 
     private int _discoveryPort;
-    public int DiscoveryPort { get => _discoveryPort; set { _discoveryPort = value; OnPropertyChanged(); } }
+    public int DiscoveryPort
+    {
+        get => _discoveryPort;
+        set { _discoveryPort = value; OnPropertyChanged(); }
+    }
 
     private string _multicastAddress = "";
-    public string MulticastAddress { get => _multicastAddress; set { _multicastAddress = value; OnPropertyChanged(); } }
+    public string MulticastAddress
+    {
+        get => _multicastAddress;
+        set { _multicastAddress = value; OnPropertyChanged(); }
+    }
 
     private int _discoveryTimeoutMs;
-    public int DiscoveryTimeoutMS { get => _discoveryTimeoutMs; set { _discoveryTimeoutMs = value; OnPropertyChanged(); } }
-    private string _networkSecret = "";
+    public int DiscoveryTimeoutMS
+    {
+        get => _discoveryTimeoutMs;
+        set { _discoveryTimeoutMs = value; OnPropertyChanged(); }
+    }
 
+    private string _networkSecret = "";
     private string? _originalNetworkSecret;
 
     public string NetworkSecret
@@ -33,7 +48,9 @@ public sealed class SettingsViewModel : BindableObject
     public ObservableCollection<TrustGroupDraftItem> Groups { get; } = new();
     public ObservableCollection<ServiceAnnounceDraftItem> AnnouncedServices { get; } = new();
 
-    private string? _originalActiveGroupId;
+    // ---------------------------------------------------------
+    // LOAD
+    // ---------------------------------------------------------
 
     public async Task LoadDraftAsync()
     {
@@ -45,11 +62,18 @@ public sealed class SettingsViewModel : BindableObject
         DiscoveryTimeoutMS = Config.Instance.DiscoveryTimeoutMS;
         NetworkSecret = Config.Instance.NetworkSecret;
 
+        _originalNetworkSecret = NetworkSecret;
+
         using var scope = ServiceHelper.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<ServiceDBContext>();
 
-        var groups = await db.TrustGroups.OrderBy(x => x.Name).ToListAsync();
+        // Load groups
+        var groups = await db.TrustGroups
+            .OrderBy(x => x.Name)
+            .ToListAsync();
+
         Groups.Clear();
+
         foreach (var g in groups)
         {
             Groups.Add(new TrustGroupDraftItem
@@ -57,15 +81,17 @@ public sealed class SettingsViewModel : BindableObject
                 Id = g.Id,
                 Name = g.Name,
                 SecretHex = g.SecretHex,
-                IsEnabled = g.IsEnabled,
-                IsActiveLocal = g.IsActiveLocal
+                IsEnabled = g.IsEnabled
             });
         }
 
-        _originalActiveGroupId = Groups.FirstOrDefault(x => x.IsActiveLocal)?.Id.ToString();
+        // Load services
+        var services = await db.AnnouncedServiceSettings
+            .OrderBy(x => x.ServiceName)
+            .ToListAsync();
 
-        var services = await db.AnnouncedServiceSettings.OrderBy(x => x.ServiceName).ToListAsync();
         AnnouncedServices.Clear();
+
         foreach (var s in services)
         {
             AnnouncedServices.Add(new ServiceAnnounceDraftItem
@@ -76,52 +102,53 @@ public sealed class SettingsViewModel : BindableObject
         }
     }
 
-    public void SetActiveGroup(Guid id)
-    {
-        foreach (var g in Groups)
-            g.IsActiveLocal = (g.Id == id);
-
-        OnPropertyChanged(nameof(Groups));
-    }
+    // ---------------------------------------------------------
+    // SAVE
+    // ---------------------------------------------------------
 
     public async Task SaveAllAsync(TrustGroupCache trustCache)
     {
-        Config.Instance.PeerName = PeerName;
+        // ---- Save core config ----
+
+        Config.Instance.PeerName = PeerName.Trim();
         Config.Instance.DiscoveryPort = DiscoveryPort;
-        Config.Instance.MulticastAddress = MulticastAddress;
+        Config.Instance.MulticastAddress = MulticastAddress.Trim();
         Config.Instance.DiscoveryTimeoutMS = DiscoveryTimeoutMS;
-        Config.Instance.NetworkSecret = NetworkSecret;
+        Config.Instance.NetworkSecret = NetworkSecret.Trim();
+
         Config.Instance.Save();
 
+        // If network secret changed -> regenerate TLS cert
         if (!string.Equals(_originalNetworkSecret, NetworkSecret, StringComparison.Ordinal))
         {
-            TlsCertificateProvider.DeleteLocalIdentityCertificate(Config.Instance.AppDataDirectory);
+            TlsCertificateProvider.DeleteLocalIdentityCertificate(
+                Config.Instance.AppDataDirectory);
         }
 
         using var scope = ServiceHelper.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<ServiceDBContext>();
 
-        var incomingGroups = Groups.Select(g => new TrustGroupEntity
-        {
-            Id = g.Id == Guid.Empty ? Guid.NewGuid() : g.Id,
-            Name = g.Name.Trim(),
-            SecretHex = g.SecretHex.Trim(),
-            IsEnabled = g.IsEnabled,
-            IsActiveLocal = g.IsActiveLocal,
-            CreatedAtUtc = DateTime.UtcNow
-        }).ToList();
+        // ---- Persist groups ----
 
-        // Ensure at least one signing group exists
-        if (incomingGroups.Count > 0 && incomingGroups.All(x => !x.IsActiveLocal))
-        {
-            var pick = incomingGroups.FirstOrDefault(x => x.IsEnabled) ?? incomingGroups.First();
-            pick.IsActiveLocal = true;
-        }
+        var incomingGroups = Groups
+            .Where(g => !string.IsNullOrWhiteSpace(g.Name))
+            .Select(g => new TrustGroupEntity
+            {
+                Id = g.Id == Guid.Empty ? Guid.NewGuid() : g.Id,
+                Name = g.Name.Trim(),
+                SecretHex = g.SecretHex.Trim(),
+                IsEnabled = g.IsEnabled,
+                CreatedAtUtc = DateTime.UtcNow
+            })
+            .ToList();
 
+        // Replace all groups (simple + deterministic)
         db.TrustGroups.RemoveRange(db.TrustGroups);
         await db.SaveChangesAsync();
 
         db.TrustGroups.AddRange(incomingGroups);
+
+        // ---- Persist service settings ----
 
         db.AnnouncedServiceSettings.RemoveRange(db.AnnouncedServiceSettings);
         await db.SaveChangesAsync();
@@ -135,26 +162,45 @@ public sealed class SettingsViewModel : BindableObject
 
         await db.SaveChangesAsync();
 
-        var enabledSecrets = incomingGroups.Where(x => x.IsEnabled).Select(x => x.SecretHex).ToList();
-        var activeSecret = incomingGroups.FirstOrDefault(x => x.IsActiveLocal)?.SecretHex;
+        // ---- Update runtime trust cache ----
+
+        var enabledSecrets = incomingGroups
+            .Where(x => x.IsEnabled)
+            .Select(x => x.SecretHex)
+            .ToList();
 
         trustCache.SetEnabledSecrets(enabledSecrets);
-
-        var newActiveId = incomingGroups.FirstOrDefault(x => x.IsActiveLocal)?.Id.ToString();
-        if (!string.Equals(_originalActiveGroupId, newActiveId, StringComparison.Ordinal))
-        {
-            TlsCertificateProvider.DeleteLocalIdentityCertificate(Config.Instance.AppDataDirectory);
-        }
     }
 }
+
+// ---------------------------------------------------------
+// Draft Models
+// ---------------------------------------------------------
 
 public sealed class TrustGroupDraftItem : BindableObject
 {
     public Guid Id { get; set; }
-    public string Name { get; set; } = "";
-    public string SecretHex { get; set; } = ""; 
-    public bool IsEnabled { get; set; }
-    public bool IsActiveLocal { get; set; }
+
+    private string _name = "";
+    public string Name
+    {
+        get => _name;
+        set { _name = value; OnPropertyChanged(); }
+    }
+
+    private string _secretHex = "";
+    public string SecretHex
+    {
+        get => _secretHex;
+        set { _secretHex = value; OnPropertyChanged(); }
+    }
+
+    private bool _isEnabled;
+    public bool IsEnabled
+    {
+        get => _isEnabled;
+        set { _isEnabled = value; OnPropertyChanged(); }
+    }
 
     public string Display => Name;
 }
@@ -162,5 +208,11 @@ public sealed class TrustGroupDraftItem : BindableObject
 public sealed class ServiceAnnounceDraftItem : BindableObject
 {
     public string ServiceName { get; set; } = "";
-    public bool IsEnabled { get; set; }
+
+    private bool _isEnabled;
+    public bool IsEnabled
+    {
+        get => _isEnabled;
+        set { _isEnabled = value; OnPropertyChanged(); }
+    }
 }

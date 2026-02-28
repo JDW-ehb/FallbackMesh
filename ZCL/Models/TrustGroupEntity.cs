@@ -18,7 +18,10 @@ public sealed class TrustGroupEntity
 
     public bool IsEnabled { get; set; } = true;
 
-    public bool IsActiveLocal { get; set; } = false;
-
     public DateTime CreatedAtUtc { get; set; } = DateTime.UtcNow;
+
+
+
+
+
 }

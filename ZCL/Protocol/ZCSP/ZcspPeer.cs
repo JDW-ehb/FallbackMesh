@@ -191,6 +191,8 @@ namespace ZCL.Protocol.ZCSP
 
                         var session = _sessions.Create(fromPeer, TimeSpan.FromMinutes(30));
 
+                        session.AttachTransport(tls);
+
                         var accept = BinaryCodec.Serialize(
                             ZcspMessageType.ServiceResponse,
                             session.Id,
@@ -283,6 +285,11 @@ namespace ZCL.Protocol.ZCSP
                     throw new InvalidOperationException("Invalid service response.");
 
                 await service.OnSessionStartedAsync(sessionId.Value, finalToPeerId, tls);
+
+                if (_sessions.TryGet(sessionId.Value, out var session))
+                {
+                    session.AttachTransport(tls);
+                }
 
                 _ = Task.Run(async () =>
                 {

@@ -36,10 +36,12 @@ namespace ZCL.Protocol.ZCSP.Sessions
 
         public void ClearAll()
         {
-            foreach (var id in _sessions.Keys.ToList())
-                Remove(id);
+            foreach (var session in _sessions.Values.ToList())
+            {
+                session.ForceClose();
+                _sessions.TryRemove(session.Id, out _);
+            }
         }
-
         public bool Remove(Guid sessionId)
         {
             return _sessions.TryRemove(sessionId, out _);

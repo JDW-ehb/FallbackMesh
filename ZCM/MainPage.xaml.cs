@@ -2,6 +2,7 @@
 using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
+using System.Linq;
 using ZCL.API;
 using ZCL.Models;
 using ZCM.Pages;
@@ -13,6 +14,18 @@ public partial class MainPage : ContentPage
     private readonly DataStore _store;
 
     public ObservableCollection<PeerNodeCard> Peers { get; } = new();
+
+    public int OnlineCount => Peers.Count(p => p.IsUp);
+    public int OfflineCount => Peers.Count(p => !p.IsUp);
+
+    // TODO later: compute from DB SharedFiles table if you want
+    public int SharedFilesCount => 0;
+
+    public ObservableCollection<string> ActivityFeed { get; } = new()
+    {
+        "System started",
+        "Waiting for peer activity..."
+    };
 
     private IDispatcherTimer? _timer;
 
@@ -39,12 +52,15 @@ public partial class MainPage : ContentPage
 
                 foreach (var card in Peers)
                     card.RefreshComputedText();
+
+                RefreshDashboardCounts();
             };
 
             _timer.Start();
         }
 
         SyncPeers();
+        RefreshDashboardCounts();
     }
 
     protected override void OnDisappearing()
@@ -53,6 +69,20 @@ public partial class MainPage : ContentPage
 
         _timer?.Stop();
         _timer = null;
+    }
+
+    private void RefreshDashboardCounts()
+    {
+        OnPropertyChanged(nameof(OnlineCount));
+        OnPropertyChanged(nameof(OfflineCount));
+        OnPropertyChanged(nameof(SharedFilesCount));
+    }
+
+    private async void DiscoveryButton_Clicked(object sender, EventArgs e)
+    {
+        await Navigation.PushModalAsync(
+            new DiscoveryPopup(this),
+            false);
     }
 
     private void SyncPeers()
@@ -78,7 +108,6 @@ public partial class MainPage : ContentPage
                 Peers.RemoveAt(i);
         }
     }
-
 
     private async void MessagingButton_Clicked(object sender, EventArgs e)
         => await Shell.Current.GoToAsync(nameof(MessagingPage));
@@ -108,7 +137,6 @@ public partial class MainPage : ContentPage
         await Navigation.PushModalAsync(popup, false);
     }
 
-
     public sealed class PeerNodeCard : INotifyPropertyChanged
     {
         private PeerNode _peer;
@@ -130,7 +158,6 @@ public partial class MainPage : ContentPage
         public string LastSeenText => $"Lastseen: {ToTimeAgo(_peer.LastSeen)}";
 
         public ObservableCollection<string> Services { get; } = new();
-
         public bool HasServices => Services.Count > 0;
 
         public PeerNodeCard(PeerNode peer, ServiceDBContext db)
@@ -154,7 +181,6 @@ public partial class MainPage : ContentPage
                 return;
 
             Services.Clear();
-
             foreach (var s in services)
                 Services.Add(s);
 

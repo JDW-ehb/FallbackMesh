@@ -59,9 +59,15 @@
 	  <Compile Update="Pages\AnnouncedServicesPopup.xaml.cs">
 	    <DependentUpon>AnnouncedServicesPopup.xaml</DependentUpon>
 	  </Compile>
+	  <Compile Update="Pages\DiscoveryPopup.xaml.cs">
+	    <DependentUpon>DiscoveryPopup.xaml</DependentUpon>
+	  </Compile>
 	</ItemGroup>
 	<ItemGroup>
 	  <MauiXaml Update="Pages\GroupsPopup.xaml">
+	    <Generator>MSBuild:Compile</Generator>
+	  </MauiXaml>
+	  <MauiXaml Update="Pages\DiscoveryPopup.xaml">
 	    <Generator>MSBuild:Compile</Generator>
 	  </MauiXaml>
 	</ItemGroup>

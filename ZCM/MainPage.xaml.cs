@@ -1,4 +1,5 @@
-﻿using Microsoft.Extensions.DependencyInjection;
+﻿using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Maui.Dispatching;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
@@ -7,6 +8,7 @@ using System.Runtime.CompilerServices;
 using ZCL.API;
 using ZCL.Models;
 using ZCL.Repositories.Security;   // ITrustGroupRepository
+using ZCL.Services.FileSharing;
 using ZCM.Pages;
 
 namespace ZCM;
@@ -79,11 +81,15 @@ public class PeerDonutDrawable : IDrawable
 
 public partial class MainPage : ContentPage
 {
+    private DateTime _lastListRefreshUtc = DateTime.MinValue;
+    private static readonly TimeSpan ListRefreshInterval = TimeSpan.FromSeconds(10);
+
     private readonly DataStore _store;
     private readonly PeerDonutDrawable _donutDrawable = new();
 
     public ObservableCollection<PeerNodeCard> Peers { get; } = new();
     public ObservableCollection<ConversationPreview> RecentConversations { get; } = new();
+    public ObservableCollection<SharedFileCard> SharedFiles { get; } = new();
 
     // ✅ Trust panel lines: "Part of group X"
     public ObservableCollection<string> TrustGroupLines { get; } = new();
@@ -91,7 +97,7 @@ public partial class MainPage : ContentPage
 
     public int OnlineCount => Peers.Count(p => p.IsUp);
     public int OfflineCount => Peers.Count(p => !p.IsUp);
-    public int SharedFilesCount => 0;
+    public int SharedFilesCount => SharedFiles.Count;
 
     public int MessagingPeersCount =>
         Peers.Count(p => p.Services.Any(s => s.Contains("Messaging")));
@@ -129,9 +135,12 @@ public partial class MainPage : ContentPage
             _timer = Dispatcher.CreateTimer();
             _timer.Interval = TimeSpan.FromSeconds(1);
 
-            _timer.Tick += (_, __) =>
+            _timer.Tick += async (_, __) =>
             {
                 SyncPeers();
+
+                await RefreshRemoteSharedFilesAsync(); // <- populates db.SharedFiles from other peers
+                SyncSharedFiles();                    // <- reads db.SharedFiles into SharedFiles (UI)
 
                 foreach (var card in Peers)
                     card.RefreshComputedText();
@@ -144,6 +153,7 @@ public partial class MainPage : ContentPage
 
         SyncPeers();
         SyncConversations();
+        SyncSharedFiles();
         RefreshDashboardCounts();
 
         // ✅ Pull groups once on page open
@@ -208,6 +218,57 @@ public partial class MainPage : ContentPage
                 TrustGroupLines.Add($"Trust groups unavailable: {ex.Message}");
                 OnPropertyChanged(nameof(TrustedGroupsCount));
             });
+        }
+    }
+
+    private void SyncSharedFiles()
+    {
+        using var scope = ServiceHelper.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<ServiceDBContext>();
+
+        // Get all shared files from the network (excluding local files if needed)
+        var files = db.SharedFiles
+            .Include(f => f.Peer)
+            .Where(f => f.IsAvailable)
+            .OrderByDescending(f => f.SharedSince)
+            .ToList();
+
+        // Update the collection
+        var newFileIds = files.Select(f => f.Id).ToHashSet();
+        var existingFileIds = SharedFiles.Select(f => f.Id).ToHashSet();
+
+        // Remove files that no longer exist
+        for (int i = SharedFiles.Count - 1; i >= 0; i--)
+        {
+            if (!newFileIds.Contains(SharedFiles[i].Id))
+                SharedFiles.RemoveAt(i);
+        }
+
+        // Add or update files
+        foreach (var file in files)
+        {
+            var existing = SharedFiles.FirstOrDefault(f => f.Id == file.Id);
+            if (existing == null)
+            {
+                SharedFiles.Add(new SharedFileCard
+                {
+                    Id = file.Id,
+                    FileName = file.FileName,
+                    FileSize = file.FileSize,
+                    FileType = file.FileType,
+                    PeerName = file.Peer.HostName,
+                    SharedSince = file.SharedSince,
+                    Checksum = file.Checksum
+                });
+            }
+            else
+            {
+                existing.FileName = file.FileName;
+                existing.FileSize = file.FileSize;
+                existing.FileType = file.FileType;
+                existing.PeerName = file.Peer.HostName;
+                existing.SharedSince = file.SharedSince;
+            }
         }
     }
 
@@ -287,12 +348,145 @@ public partial class MainPage : ContentPage
         }
     }
 
+    private async Task RefreshRemoteSharedFilesAsync()
+    {
+        // throttle network calls
+        if (DateTime.UtcNow - _lastListRefreshUtc < ListRefreshInterval)
+            return;
+
+        _lastListRefreshUtc = DateTime.UtcNow;
+
+        using var scope = ServiceHelper.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<ServiceDBContext>();
+        var fileSharing = scope.ServiceProvider.GetRequiredService<FileSharingService>();
+
+        // Ask every online remote peer for its list
+        var onlinePeers = await db.PeerNodes
+            .Where(p => !p.IsLocal && p.OnlineStatus == PeerOnlineStatus.Online)
+            .ToListAsync();
+
+        foreach (var peer in onlinePeers)
+        {
+            try
+            {
+                await fileSharing.RequestListRoutedAsync(
+                    ownerPeer: peer,
+                    targetProtocolPeerId: peer.ProtocolPeerId);
+            }
+            catch
+            {
+                // ignore per-peer failures
+            }
+        }
+    }
+
     public class ConversationPreview
     {
         public string PeerName { get; set; } = "";
         public string LastMessage { get; set; } = "";
         public bool IsOnline { get; set; }
         public string LastSeenText { get; set; } = "";
+    }
+
+    public sealed class SharedFileCard : INotifyPropertyChanged
+    {
+        public event PropertyChangedEventHandler? PropertyChanged;
+
+        private string _fileName = "";
+        private long _fileSize;
+        private string _fileType = "";
+        private string _peerName = "";
+        private DateTime _sharedSince;
+
+        public Guid Id { get; set; }
+
+        public string FileName
+        {
+            get => _fileName;
+            set
+            {
+                if (_fileName != value)
+                {
+                    _fileName = value;
+                    OnPropertyChanged();
+                }
+            }
+        }
+
+        public long FileSize
+        {
+            get => _fileSize;
+            set
+            {
+                if (_fileSize != value)
+                {
+                    _fileSize = value;
+                    OnPropertyChanged();
+                    OnPropertyChanged(nameof(FileSizeText));
+                }
+            }
+        }
+
+        public string FileType
+        {
+            get => _fileType;
+            set
+            {
+                if (_fileType != value)
+                {
+                    _fileType = value;
+                    OnPropertyChanged();
+                }
+            }
+        }
+
+        public string PeerName
+        {
+            get => _peerName;
+            set
+            {
+                if (_peerName != value)
+                {
+                    _peerName = value;
+                    OnPropertyChanged();
+                }
+            }
+        }
+
+        public DateTime SharedSince
+        {
+            get => _sharedSince;
+            set
+            {
+                if (_sharedSince != value)
+                {
+                    _sharedSince = value;
+                    OnPropertyChanged();
+                }
+            }
+        }
+
+        public string Checksum { get; set; } = "";
+
+        public string FileSizeText => FormatFileSize(FileSize);
+
+        private void OnPropertyChanged([CallerMemberName] string? name = null)
+            => PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(name));
+
+        private static string FormatFileSize(long bytes)
+        {
+            string[] sizes = { "B", "KB", "MB", "GB", "TB" };
+            double len = bytes;
+            int order = 0;
+
+            while (len >= 1024 && order < sizes.Length - 1)
+            {
+                order++;
+                len /= 1024;
+            }
+
+            return $"{len:0.##} {sizes[order]}";
+        }
     }
 
     public sealed class PeerNodeCard : INotifyPropertyChanged

@@ -14,11 +14,11 @@ public partial class GroupsPopup : ContentPage
         BindingContext = vm;
     }
 
-    private async void OnCloseClicked(object sender, EventArgs e)
-        => await Navigation.PopModalAsync(false);
+    private void OnCloseClicked(object sender, EventArgs e)
+        => SafeClose();
 
-    private async void OnBackdropTapped(object sender, EventArgs e)
-        => await Navigation.PopModalAsync(false);
+    private void OnBackdropTapped(object sender, EventArgs e)
+        => SafeClose();
 
     // -------------------------------------------------
     // Add Group
@@ -84,5 +84,22 @@ public partial class GroupsPopup : ContentPage
             return;
 
         entry.IsPassword = !entry.IsPassword;
+    }
+
+
+    private void SafeClose()
+    {
+        Dispatcher.Dispatch(async () =>
+        {
+            try
+            {
+                if (Navigation?.ModalStack?.Count > 0)
+                    await Navigation.PopModalAsync(false);
+            }
+            catch
+            {
+                // swallow WinUI handler race
+            }
+        });
     }
 }

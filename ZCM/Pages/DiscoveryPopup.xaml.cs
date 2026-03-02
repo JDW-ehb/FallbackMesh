@@ -1,3 +1,4 @@
+using ZCL.Models;
 using ZCM;
 
 namespace ZCM.Pages;
@@ -24,5 +25,17 @@ public partial class DiscoveryPopup : ContentPage
         await Navigation.PushModalAsync(
             new PeerDetailsPage { Card = card },
             false);
+    }
+
+    private async void OnMessagingPageTapped(object sender, TappedEventArgs e)
+    {
+        if (e.Parameter is not PeerNode peer)
+            return;
+
+        // close the popup/modal first, then Shell navigate
+        await Navigation.PopModalAsync(false);
+
+        await Shell.Current.GoToAsync(nameof(MessagingPage),
+            new Dictionary<string, object> { { "Peer", peer } });
     }
 }

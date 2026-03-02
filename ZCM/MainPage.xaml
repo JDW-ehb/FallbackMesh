@@ -14,63 +14,74 @@
     <Grid ColumnDefinitions="240,*">
 
         <!-- SIDEBAR -->
-        <VerticalStackLayout Grid.Column="0"
-                             Padding="20"
-                             Spacing="16"
-                             BackgroundColor="#151515">
+        <Grid Grid.Column="0"
+      Padding="20"
+      BackgroundColor="#151515"
+      RowDefinitions="*,Auto">
 
-            <Label Text="Zero Cloud"
-                   FontSize="22"
-                   TextColor="White"
-                   FontAttributes="Bold" />
+            <!-- TOP NAV SECTION -->
+            <VerticalStackLayout Grid.Row="0"
+                         Spacing="16">
 
-            <Button Text="Dashboard"
-                    BackgroundColor="#2A2A2A"
-                    TextColor="White"
-                    CornerRadius="12" />
+                <Label Text="Zero Cloud"
+               FontSize="22"
+               TextColor="White"
+               FontAttributes="Bold" />
 
-            <Button Text="Discovery"
-                    Clicked="DiscoveryButton_Clicked"
-                    BackgroundColor="#2A2A2A"
-                    TextColor="White"
-                    CornerRadius="12" />
+                <Button Text="Dashboard"
+                BackgroundColor="#2A2A2A"
+                TextColor="White"
+                CornerRadius="12" />
 
-            <Label Text="Services"
-                   Margin="0,20,0,0"
-                   FontSize="14"
-                   TextColor="#888888" />
+                <Button Text="Discovery"
+                Clicked="DiscoveryButton_Clicked"
+                BackgroundColor="#2A2A2A"
+                TextColor="White"
+                CornerRadius="12" />
 
-            <Button Text="LLM"
-                    Clicked="LlmButton_Clicked"
-                    BackgroundColor="#2A2A2A"
-                    TextColor="White"
-                    CornerRadius="12" />
+                <Label Text="Services"
+               Margin="0,20,0,0"
+               FontSize="14"
+               TextColor="#888888" />
 
-            <Button Text="MSG"
-                    Clicked="MessagingButton_Clicked"
-                    BackgroundColor="#2A2A2A"
-                    TextColor="White"
-                    CornerRadius="12" />
+                <Button Text="LLM"
+                Clicked="LlmButton_Clicked"
+                BackgroundColor="#2A2A2A"
+                TextColor="White"
+                CornerRadius="12" />
 
-            <Button Text="Share"
-                    Clicked="ShareButton_Clicked"
-                    BackgroundColor="#2A2A2A"
-                    TextColor="White"
-                    CornerRadius="12" />
+                <Button Text="MSG"
+                Clicked="MessagingButton_Clicked"
+                BackgroundColor="#2A2A2A"
+                TextColor="White"
+                CornerRadius="12" />
 
-            <VerticalStackLayout VerticalOptions="EndAndExpand" Spacing="12">
+                <Button Text="Share"
+                Clicked="ShareButton_Clicked"
+                BackgroundColor="#2A2A2A"
+                TextColor="White"
+                CornerRadius="12" />
+
+            </VerticalStackLayout>
+
+            <!-- BOTTOM SECTION -->
+            <VerticalStackLayout Grid.Row="1"
+                         Spacing="12">
+
                 <Button Text="Settings"
-                        Clicked="SettingsButton_Clicked"
-                        BackgroundColor="#2A2A2A"
-                        TextColor="White"
-                        CornerRadius="12" />
+                Clicked="SettingsButton_Clicked"
+                BackgroundColor="#2A2A2A"
+                TextColor="White"
+                CornerRadius="12" />
 
                 <Button Text="Exit App"
-                        BackgroundColor="#2A2A2A"
-                        TextColor="#999999"
-                        CornerRadius="12" />
+                BackgroundColor="#2A2A2A"
+                TextColor="#999999"
+                CornerRadius="12" />
+
             </VerticalStackLayout>
-        </VerticalStackLayout>
+
+        </Grid>
 
         <!-- DASHBOARD -->
         <Grid Grid.Column="1"
@@ -203,15 +214,78 @@
                    Grid.Column="0"
                    BackgroundColor="#212121"
                    CornerRadius="18"
-                   Padding="20">
+                   Padding="20"
+                   HeightRequest="400">
 
                 <VerticalStackLayout Spacing="12">
-                    <Label Text="Files Shared"
+                    <Label Text="{Binding SharedFilesCount, StringFormat='Files Shared ({0})'}"
                            FontSize="18"
                            TextColor="White"
-                           FontAttributes="Bold"/>
-                    <Label Text="No recent file activity"
-                           TextColor="#888888"/>
+                           FontAttributes="Bold" />
+
+                    <CollectionView ItemsSource="{Binding SharedFiles}"
+                                    SelectionMode="None"
+                                    VerticalOptions="FillAndExpand"
+                                    MaximumHeightRequest="240">
+
+                        <CollectionView.EmptyView>
+                            <Label Text="No shared files found (yet)"
+                                   TextColor="#888888"
+                                   Margin="0,6,0,0" />
+                        </CollectionView.EmptyView>
+
+                        <CollectionView.ItemTemplate>
+                            <DataTemplate>
+                                <Frame BackgroundColor="#1A1A1A"
+                                       Padding="12"
+                                       CornerRadius="12"
+                                       Margin="0,4"
+                                       HasShadow="False">
+
+                                    <Grid ColumnDefinitions="*,Auto"
+                                          RowDefinitions="Auto,Auto"
+                                          RowSpacing="2"
+                                          ColumnSpacing="10">
+
+                                        <!-- File name -->
+                                        <Label Grid.Row="0"
+                                               Grid.Column="0"
+                                               Text="{Binding FileName}"
+                                               TextColor="White"
+                                               FontAttributes="Bold"
+                                               LineBreakMode="TailTruncation" />
+
+                                        <!-- Size -->
+                                        <Label Grid.Row="0"
+                                               Grid.Column="1"
+                                               Text="{Binding FileSizeText}"
+                                               TextColor="#AAAAAA"
+                                               FontSize="12"
+                                               HorizontalTextAlignment="End" />
+
+                                        <!-- Peer + type -->
+                                        <Label Grid.Row="1"
+                                               Grid.Column="0"
+                                               Grid.ColumnSpan="2"
+                                               TextColor="#CCCCCC"
+                                               FontSize="11"
+                                               LineBreakMode="TailTruncation">
+                                            <Label.FormattedText>
+                                                <FormattedString>
+                                                    <Span Text="From: " />
+                                                    <Span Text="{Binding PeerName}" FontAttributes="Italic" />
+                                                    <Span Text=" • " />
+                                                    <Span Text="{Binding FileType}" TextTransform="Uppercase" />
+                                                </FormattedString>
+                                            </Label.FormattedText>
+                                        </Label>
+
+                                    </Grid>
+                                </Frame>
+                            </DataTemplate>
+                        </CollectionView.ItemTemplate>
+
+                    </CollectionView>
                 </VerticalStackLayout>
             </Frame>
 
@@ -221,7 +295,7 @@
                    BackgroundColor="#212121"
                    CornerRadius="18"
                    Padding="20"
-                   HeightRequest="220">
+                   HeightRequest="400">
 
                 <Grid RowDefinitions="Auto,Auto,Auto,*"
       RowSpacing="6">

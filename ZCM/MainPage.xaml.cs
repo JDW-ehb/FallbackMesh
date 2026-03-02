@@ -1,10 +1,12 @@
-﻿using Microsoft.Maui.Dispatching;
+﻿using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Maui.Dispatching;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Linq;
 using System.Runtime.CompilerServices;
 using ZCL.API;
 using ZCL.Models;
+using ZCL.Repositories.Security;   // ITrustGroupRepository
 using ZCM.Pages;
 
 namespace ZCM;
@@ -34,32 +36,31 @@ public class PeerDonutDrawable : IDrawable
         DrawSegment(canvas, cx, cy, outerR, innerR, startAngle, onlineSweep, Colors.LimeGreen);
         DrawSegment(canvas, cx, cy, outerR, innerR, startAngle + onlineSweep, offlineSweep, Colors.DarkRed);
     }
+
     private void DrawSegment(
-    ICanvas canvas,
-    float cx, float cy,
-    float outerR, float innerR,
-    float startDeg, float sweepDeg,
-    Color color)
+        ICanvas canvas,
+        float cx, float cy,
+        float outerR, float innerR,
+        float startDeg, float sweepDeg,
+        Color color)
     {
-        const int steps = 60; // smoothness
+        const int steps = 60;
 
         var path = new PathF();
         float step = sweepDeg / steps;
 
-        // Outer arc
+        // outer arc
         for (int i = 0; i <= steps; i++)
         {
             float angle = (startDeg + step * i) * MathF.PI / 180f;
             float x = cx + outerR * MathF.Cos(angle);
             float y = cy + outerR * MathF.Sin(angle);
 
-            if (i == 0)
-                path.MoveTo(x, y);
-            else
-                path.LineTo(x, y);
+            if (i == 0) path.MoveTo(x, y);
+            else path.LineTo(x, y);
         }
 
-        // Inner arc (reverse)
+        // inner arc (reverse)
         for (int i = steps; i >= 0; i--)
         {
             float angle = (startDeg + step * i) * MathF.PI / 180f;
@@ -83,6 +84,10 @@ public partial class MainPage : ContentPage
 
     public ObservableCollection<PeerNodeCard> Peers { get; } = new();
     public ObservableCollection<ConversationPreview> RecentConversations { get; } = new();
+
+    // ✅ Trust panel lines: "Part of group X"
+    public ObservableCollection<string> TrustGroupLines { get; } = new();
+    public int TrustedGroupsCount => TrustGroupLines.Count;
 
     public int OnlineCount => Peers.Count(p => p.IsUp);
     public int OfflineCount => Peers.Count(p => !p.IsUp);
@@ -112,7 +117,6 @@ public partial class MainPage : ContentPage
         _store = ServiceHelper.GetService<DataStore>();
         BindingContext = this;
 
-        // Hook drawable to GraphicsView (defined in XAML)
         PeerDonutView.Drawable = _donutDrawable;
     }
 
@@ -141,6 +145,9 @@ public partial class MainPage : ContentPage
         SyncPeers();
         SyncConversations();
         RefreshDashboardCounts();
+
+        // ✅ Pull groups once on page open
+        _ = SyncTrustGroupsAsync();
     }
 
     protected override void OnDisappearing()
@@ -159,11 +166,49 @@ public partial class MainPage : ContentPage
         OnPropertyChanged(nameof(FileSharingPeersCount));
         OnPropertyChanged(nameof(AvailableModelsCount));
 
-        // Update donut values
         _donutDrawable.Online = OnlineCount;
         _donutDrawable.Offline = OfflineCount;
-
         PeerDonutView.Invalidate();
+    }
+
+    // ✅ Trust groups -> "Part of group X"
+    private async Task SyncTrustGroupsAsync()
+    {
+        try
+        {
+            using var scope = ServiceHelper.Services.CreateScope();
+            var repo = scope.ServiceProvider.GetRequiredService<ITrustGroupRepository>();
+
+            var enabled = await repo.GetEnabledAsync();
+
+            // Adjust this if your entity uses a different property name
+            var lines = enabled
+                .Select(g => $"Part of group {g.Name}")
+                .ToList();
+
+            await MainThread.InvokeOnMainThreadAsync(() =>
+            {
+                // Only redraw if changed (prevents flicker)
+                if (TrustGroupLines.SequenceEqual(lines))
+                    return;
+
+                TrustGroupLines.Clear();
+                foreach (var l in lines)
+                    TrustGroupLines.Add(l);
+
+                OnPropertyChanged(nameof(TrustedGroupsCount));
+            });
+        }
+        catch (Exception ex)
+        {
+            // If repo blows up, don't crash the UI — just show something.
+            await MainThread.InvokeOnMainThreadAsync(() =>
+            {
+                TrustGroupLines.Clear();
+                TrustGroupLines.Add($"Trust groups unavailable: {ex.Message}");
+                OnPropertyChanged(nameof(TrustedGroupsCount));
+            });
+        }
     }
 
     private async void DiscoveryButton_Clicked(object sender, EventArgs e)
@@ -237,7 +282,6 @@ public partial class MainPage : ContentPage
         for (int i = Peers.Count - 1; i >= 0; i--)
         {
             var card = Peers[i];
-
             if (!_store.Peers.Any(p => p.ProtocolPeerId == card.ProtocolPeerId))
                 Peers.RemoveAt(i);
         }

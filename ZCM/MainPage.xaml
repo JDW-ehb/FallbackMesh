@@ -220,16 +220,52 @@
                    Grid.Column="1"
                    BackgroundColor="#212121"
                    CornerRadius="18"
-                   Padding="20">
+                   Padding="20"
+                   HeightRequest="220">
 
-                <VerticalStackLayout Spacing="12">
-                    <Label Text="Trust &amp; Security"
-                           FontSize="18"
-                           TextColor="White"
-                           FontAttributes="Bold"/>
-                    <Label Text="Network secret active" TextColor="#CCCCCC"/>
-                    <Label Text="2 Trusted groups enabled" TextColor="#CCCCCC"/>
-                </VerticalStackLayout>
+                <Grid RowDefinitions="Auto,Auto,Auto,*"
+      RowSpacing="6">
+
+                    <!-- Title -->
+                    <Label Grid.Row="0"
+           Text="Trust &amp; Security"
+           FontSize="18"
+           TextColor="White"
+           FontAttributes="Bold"/>
+
+                    <!-- Status -->
+                    <Label Grid.Row="1"
+           Text="Network secret active"
+           TextColor="#CCCCCC"/>
+
+                    <Label Grid.Row="2"
+           Text="{Binding TrustedGroupsCount, StringFormat='{}{0} Trusted groups enabled'}"
+           TextColor="#CCCCCC"/>
+
+                    <!-- Scrollable group list -->
+                    <CollectionView Grid.Row="3"
+                    ItemsSource="{Binding TrustGroupLines}"
+                    SelectionMode="None"
+                    VerticalOptions="FillAndExpand"
+                    Margin="0,6,0,0">
+
+                        <CollectionView.ItemTemplate>
+                            <DataTemplate>
+                                <Frame BackgroundColor="#2A2A2A"
+                       Padding="8"
+                       CornerRadius="10"
+                       Margin="0,4"
+                       HasShadow="False">
+                                    <Label Text="{Binding}"
+                           FontSize="12"
+                           TextColor="#CCCCCC"/>
+                                </Frame>
+                            </DataTemplate>
+                        </CollectionView.ItemTemplate>
+
+                    </CollectionView>
+
+                </Grid>
             </Frame>
 
         </Grid>

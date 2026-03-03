@@ -18,6 +18,8 @@ public partial class LLMChatPage : ContentPage
     {
         InitializeComponent();
 
+        Sidebar.Host = Drawer;
+
         _vm = new LLMChatViewModel(
             ServiceHelper.GetService<ZcspPeer>(),
             ServiceHelper.GetService<LLMChatService>(),

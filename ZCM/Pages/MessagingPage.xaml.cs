@@ -19,6 +19,8 @@ public partial class MessagingPage : ContentPage
     {
         InitializeComponent();
 
+        Sidebar.Host = Drawer;
+
         _vm = new MessagingViewModel(
            ServiceHelper.GetService<ZcspPeer>(),
            ServiceHelper.GetService<MessagingService>(),
@@ -91,10 +93,7 @@ public partial class MessagingPage : ContentPage
 
         Dispatcher.Dispatch(() =>
         {
-            MessagesView.ScrollTo(
-                vm.Messages[^1],
-                position: ScrollToPosition.End,
-                animate: true);
+            MessagesView.ScrollTo(vm.Messages[^1], -1, ScrollToPosition.End, true);
         });
     }
 

@@ -124,6 +124,8 @@ public partial class MainPage : ContentPage
         BindingContext = this;
 
         PeerDonutView.Drawable = _donutDrawable;
+
+        Sidebar.Host = Drawer;
     }
 
     protected override void OnAppearing()

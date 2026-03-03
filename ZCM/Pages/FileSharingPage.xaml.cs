@@ -14,6 +14,8 @@ public partial class FileSharingPage : ContentPage
     {
         InitializeComponent();
 
+        Sidebar.Host = Drawer;
+
         _vm = new FileSharingHubViewModel(
             ServiceHelper.GetService<ZCL.Services.FileSharing.FileSharingService>(),
             ServiceHelper.GetService<ZCL.Repositories.Peers.IPeerRepository>());
@@ -33,7 +35,7 @@ public partial class FileSharingPage : ContentPage
 
             Dispatcher.Dispatch(async () =>
             {
-                await Task.Delay(50); 
+                await Task.Delay(50);
                 await _vm.ActivatePeerAsync(_preselectPeer);
             });
         }
@@ -55,11 +57,5 @@ public partial class FileSharingPage : ContentPage
     {
         await Navigation.PushModalAsync(
             new MySharedFilesPopup(_vm));
-    }
-
-    private void HamburgerButton_Clicked(object sender, EventArgs e)
-    {
-        if (Shell.Current is Shell shell)
-            shell.FlyoutIsPresented = !shell.FlyoutIsPresented;
     }
 }

@@ -575,4 +575,11 @@ public partial class MainPage : ContentPage
             return $"{(int)Math.Round(diff.TotalDays / 365)}y ago";
         }
     }
+
+
+    private void HamburgerButton_Clicked(object sender, EventArgs e)
+    {
+        if (Shell.Current is Shell shell)
+            shell.FlyoutIsPresented = !shell.FlyoutIsPresented;
+    }
 }

@@ -3,6 +3,7 @@
     xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
     xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
     x:Class="ZCM.Pages.LLMChatPage"
+    Shell.NavBarIsVisible="False"
     BackgroundColor="#1e1e1e">
 
     <Grid ColumnDefinitions="320,*"
@@ -41,11 +42,10 @@
                     CornerRadius="12" />
 
             <CollectionView Grid.Row="4"
-                            Margin="0,14,0,0"
-                            Padding="0,6"
-                            ItemsSource="{Binding Conversations}"
-                            SelectionMode="Single"
-                            SelectedItem="{Binding SelectedConversation}">
+                Margin="0,14,0,0"
+                ItemsSource="{Binding Conversations}"
+                SelectionMode="Single"
+                SelectedItem="{Binding SelectedConversation}">
 
                 <CollectionView.ItemTemplate>
                     <DataTemplate>

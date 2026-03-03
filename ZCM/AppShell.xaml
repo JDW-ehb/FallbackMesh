@@ -3,10 +3,84 @@
     xmlns="http://schemas.microsoft.com/dotnet/2021/maui"
     xmlns:x="http://schemas.microsoft.com/winfx/2009/xaml"
     xmlns:local="clr-namespace:ZCM"
-    Title="ZCM">
+    xmlns:pages="clr-namespace:ZCM.Pages"
+    FlyoutBehavior="Flyout"
+    Shell.NavBarIsVisible="False"
+    BackgroundColor="#111111">
 
+    <!-- LEFT SIDEBAR (Flyout) -->
+    <Shell.FlyoutContent>
+        <Grid Padding="20"
+              BackgroundColor="#151515"
+              RowDefinitions="*,Auto">
+
+            <!-- TOP NAV SECTION -->
+            <VerticalStackLayout Grid.Row="0"
+                                 Spacing="16">
+
+                <Label Text="Zero Cloud"
+                       FontSize="22"
+                       TextColor="White"
+                       FontAttributes="Bold" />
+
+                <Button Text="Dashboard"
+                        Clicked="DashboardButton_Clicked"
+                        BackgroundColor="#2A2A2A"
+                        TextColor="White"
+                        CornerRadius="12" />
+
+                <Button Text="Discovery"
+                        Clicked="DiscoveryButton_Clicked"
+                        BackgroundColor="#2A2A2A"
+                        TextColor="White"
+                        CornerRadius="12" />
+
+                <Label Text="Services"
+                       Margin="0,20,0,0"
+                       FontSize="14"
+                       TextColor="#888888" />
+
+                <Button Text="LLM"
+                        Clicked="LlmButton_Clicked"
+                        BackgroundColor="#2A2A2A"
+                        TextColor="White"
+                        CornerRadius="12" />
+
+                <Button Text="MSG"
+                        Clicked="MessagingButton_Clicked"
+                        BackgroundColor="#2A2A2A"
+                        TextColor="White"
+                        CornerRadius="12" />
+
+                <Button Text="Share"
+                        Clicked="ShareButton_Clicked"
+                        BackgroundColor="#2A2A2A"
+                        TextColor="White"
+                        CornerRadius="12" />
+            </VerticalStackLayout>
+
+            <!-- BOTTOM SECTION -->
+            <VerticalStackLayout Grid.Row="1"
+                                 Spacing="12">
+
+                <Button Text="Settings"
+                        Clicked="SettingsButton_Clicked"
+                        BackgroundColor="#2A2A2A"
+                        TextColor="White"
+                        CornerRadius="12" />
+
+                <Button Text="Exit App"
+                        Clicked="ExitButton_Clicked"
+                        BackgroundColor="#2A2A2A"
+                        TextColor="#999999"
+                        CornerRadius="12" />
+            </VerticalStackLayout>
+        </Grid>
+    </Shell.FlyoutContent>
+
+    <!-- DETAIL AREA (pages shown here) -->
     <ShellContent
-        Title="Home"
+        Title="Dashboard"
         ContentTemplate="{DataTemplate local:MainPage}"
         Route="MainPage" />
 

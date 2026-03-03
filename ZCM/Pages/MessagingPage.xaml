@@ -5,6 +5,7 @@
     xmlns:conv="clr-namespace:ZCM.Converters"
     xmlns:controls="clr-namespace:ZCM.Controls"
     x:Class="ZCM.Pages.MessagingPage"
+    Shell.NavBarIsVisible="False"
     BackgroundColor="#1e1e1e">
 
     <ContentPage.Resources>

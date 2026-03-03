@@ -56,4 +56,10 @@ public partial class FileSharingPage : ContentPage
         await Navigation.PushModalAsync(
             new MySharedFilesPopup(_vm));
     }
+
+    private void HamburgerButton_Clicked(object sender, EventArgs e)
+    {
+        if (Shell.Current is Shell shell)
+            shell.FlyoutIsPresented = !shell.FlyoutIsPresented;
+    }
 }

@@ -19,7 +19,7 @@ namespace ZCL.Protocol.ZCSP
 {
     public sealed class ZcspPeer
     {
-        private string? _peerId; // resolved from DB (GUID string)
+        private string? _peerId; 
         private readonly SessionRegistry _sessions;
         private readonly IServiceScopeFactory _scopeFactory;
         private readonly RoutingState _routing;
@@ -217,9 +217,14 @@ namespace ZCL.Protocol.ZCSP
             }
         }
 
-        public async Task ConnectAsync(string host, int port, string remotePeerId, IZcspService service)
+        public async Task ConnectAsync(
+    string host,
+    int port,
+    string remotePeerId,
+    IZcspService service,
+    CancellationToken ct = default)
         {
-            var localId = await EnsurePeerIdAsync();
+            var localId = await EnsurePeerIdAsync(ct);
 
             var finalToPeerId = remotePeerId;
 
@@ -238,17 +243,29 @@ namespace ZCL.Protocol.ZCSP
                 connectPort = _routing.ServerPort;
             }
 
-            var client = new TcpClient();
+            using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            timeoutCts.CancelAfter(TimeSpan.FromSeconds(3));
+
+            TcpClient? client = null;
+            NetworkStream? raw = null;
+            SslStream? tls = null;
 
             try
             {
-                Console.WriteLine($"[CONNECT] Mode={_routing.Mode} Connecting to {connectHost}:{connectPort} (finalTo={finalToPeerId})");
-                await client.ConnectAsync(connectHost, connectPort);
+                client = new TcpClient
+                {
+                    NoDelay = true
+                };
 
-                var raw = client.GetStream();
+                Console.WriteLine($"[CONNECT] Mode={_routing.Mode} Connecting to {connectHost}:{connectPort} (finalTo={finalToPeerId})");
+
+                await client.ConnectAsync(connectHost, connectPort).WaitAsync(timeoutCts.Token);
+
+                raw = client.GetStream();
 
                 var myCert = LoadLocalTlsIdentity();
-                var tls = WrapClientTls(raw);
+
+                tls = WrapClientTls(raw);
 
                 var clientOptions = new SslClientAuthenticationOptions
                 {
@@ -258,12 +275,10 @@ namespace ZCL.Protocol.ZCSP
                     CertificateRevocationCheckMode = X509RevocationMode.NoCheck
                 };
 
-                await tls.AuthenticateAsClientAsync(clientOptions);
+                await tls.AuthenticateAsClientAsync(clientOptions, timeoutCts.Token);
 
-                // Group auth layer
                 await SendGroupAuthAsync(tls, myCert);
 
-                // Send service request
                 var request = BinaryCodec.Serialize(
                     ZcspMessageType.ServiceRequest,
                     null,
@@ -277,7 +292,6 @@ namespace ZCL.Protocol.ZCSP
 
                 await Framing.WriteAsync(tls, request);
 
-                // Read service response
                 var frame = await Framing.ReadAsync(tls);
                 if (frame == null)
                     throw new IOException("No service response (connection closed).");
@@ -286,7 +300,6 @@ namespace ZCL.Protocol.ZCSP
                 if (type != ZcspMessageType.ServiceResponse || sessionId == null)
                     throw new InvalidOperationException("Invalid service response.");
 
-                // Read payload (this was previously ignored)
                 var ok = reader.ReadBoolean();
                 var expiresTicks = reader.ReadInt64();
 
@@ -295,11 +308,7 @@ namespace ZCL.Protocol.ZCSP
 
                 var expiresAtUtc = new DateTime(expiresTicks, DateTimeKind.Utc);
 
-                // Register outbound session so ClearAll() can kill it later
-                var session = _sessions.AddExisting(
-                    sessionId.Value,
-                    finalToPeerId,
-                    expiresAtUtc);
+                var session = _sessions.AddExisting(sessionId.Value, finalToPeerId, expiresAtUtc);
 
                 session.AttachTransport(tls);
 
@@ -311,17 +320,14 @@ namespace ZCL.Protocol.ZCSP
                     {
                         await RunSessionAsync(tls, sessionId.Value, service);
                     }
-                    finally
-                    {
-                        try { tls.Dispose(); } catch { }
-                        try { raw.Dispose(); } catch { }
-                        try { client.Dispose(); } catch { }
-                    }
+                    catch {  }
                 });
             }
             catch
             {
-                try { client.Dispose(); } catch { }
+                try { tls?.Dispose(); } catch { }
+                try { raw?.Dispose(); } catch { }
+                try { client?.Dispose(); } catch { }
                 throw;
             }
         }

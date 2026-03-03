@@ -1,6 +1,5 @@
 ﻿using System.Runtime.CompilerServices;
 using ZCM.Controls;
-using ZCM.Notifications;
 using ZCM.Pages;
 
 namespace ZCM
@@ -16,6 +15,7 @@ namespace ZCM
             Routing.RegisterRoute(nameof(MessagingPage), typeof(MessagingPage));
             Routing.RegisterRoute(nameof(LLMChatPage), typeof(LLMChatPage));
             Routing.RegisterRoute(nameof(FileSharingPage), typeof(FileSharingPage));
+            Routing.RegisterRoute(nameof(SettingsPage), typeof(SettingsPage));
         }
 
         protected override void OnPropertyChanged([CallerMemberName] string? propertyName = null)
@@ -24,12 +24,10 @@ namespace ZCM
 
             if (propertyName == nameof(FlyoutIsPresented) && FlyoutIsPresented && !_intercepting)
             {
-                // Prevent Shell's flyout from actually opening
                 _intercepting = true;
                 FlyoutIsPresented = false;
                 _intercepting = false;
 
-                // Toggle the current page's DrawerHost instead
                 if (CurrentPage is IDrawerPage { PageDrawer: not null } drawerPage)
                 {
                     drawerPage.PageDrawer.IsOpen = !drawerPage.PageDrawer.IsOpen;
@@ -37,59 +35,77 @@ namespace ZCM
             }
         }
 
-        private async void DashboardButton_Clicked(object sender, EventArgs e)
+        // -------------------------
+        // Navigation Helpers
+        // -------------------------
+
+        private async Task NavigateIfNotCurrentAsync<TPage>(string route)
         {
             FlyoutIsPresented = false;
-            await GoToAsync("//MainPage");
+
+            if (CurrentPage is TPage)
+                return;
+
+            await GoToAsync(route);
+            LogNavigationStack();
+        }
+
+        // -------------------------
+        // Buttons
+        // -------------------------
+
+        private async void DashboardButton_Clicked(object sender, EventArgs e)
+        {
+            await NavigateIfNotCurrentAsync<MainPage>("//MainPage");
         }
 
         private async void MessagingButton_Clicked(object sender, EventArgs e)
         {
-            FlyoutIsPresented = false;
-            await GoToAsync(nameof(MessagingPage));
+            await NavigateIfNotCurrentAsync<MessagingPage>(nameof(MessagingPage));
         }
 
         private async void LlmButton_Clicked(object sender, EventArgs e)
         {
-            FlyoutIsPresented = false;
-            await GoToAsync(nameof(LLMChatPage));
+            await NavigateIfNotCurrentAsync<LLMChatPage>(nameof(LLMChatPage));
         }
 
         private async void ShareButton_Clicked(object sender, EventArgs e)
         {
-            FlyoutIsPresented = false;
-            await GoToAsync(nameof(FileSharingPage));
+            await NavigateIfNotCurrentAsync<FileSharingPage>(nameof(FileSharingPage));
         }
 
         private async void SettingsButton_Clicked(object sender, EventArgs e)
         {
-            FlyoutIsPresented = false;
-            await Navigation.PushModalAsync(new SettingsPage(), false);
-        }
-
-        private async void DiscoveryButton_Clicked(object sender, EventArgs e)
-        {
-            FlyoutIsPresented = false;
-
-            // DiscoveryPopup expects a MainPage instance.
-            // If you're already on MainPage, reuse it; otherwise navigate to it first.
-            if (CurrentPage is MainPage main)
-            {
-                await main.Navigation.PushModalAsync(new DiscoveryPopup(main), false);
-                return;
-            }
-
-            await GoToAsync("//MainPage");
-
-            if (CurrentPage is MainPage mainAfterNav)
-                await mainAfterNav.Navigation.PushModalAsync(new DiscoveryPopup(mainAfterNav), false);
+            await NavigateIfNotCurrentAsync<SettingsPage>(nameof(SettingsPage));
         }
 
         private void ExitButton_Clicked(object sender, EventArgs e)
         {
-#if ANDROID || IOS || MACCATALYST || WINDOWS
+#if WINDOWS
+            var window = Microsoft.Maui.Controls.Application.Current?.Windows.FirstOrDefault();
+            if (window?.Handler?.PlatformView is Microsoft.UI.Xaml.Window nativeWindow)
+            {
+                nativeWindow.Close();
+            }
+#else
             Application.Current?.Quit();
 #endif
+        }
+
+        // -------------------------
+        // Logging
+        // -------------------------
+
+        private void LogNavigationStack()
+        {
+            var stack = Navigation.NavigationStack;
+
+            System.Diagnostics.Debug.WriteLine("---- Navigation Stack ----");
+
+            foreach (var page in stack)
+                System.Diagnostics.Debug.WriteLine(page.GetType().Name);
+
+            System.Diagnostics.Debug.WriteLine("--------------------------");
         }
     }
 }

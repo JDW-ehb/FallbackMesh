@@ -4,6 +4,7 @@ using ZCL.Protocol.ZCSP;
 using ZCL.Services.Messaging;
 using ZCM.Controls;
 using ZCM.ViewModels;
+using ZCM.Notifications;
 
 namespace ZCM.Pages;
 
@@ -21,6 +22,9 @@ public partial class MessagingPage : ContentPage, IDrawerPage
     public MessagingPage()
     {
         InitializeComponent();
+
+        // NEW: give the notification system the overlay layer for this page
+        NotificationHost.Initialize(NotificationLayer);
 
         Sidebar.Host = Drawer;
 

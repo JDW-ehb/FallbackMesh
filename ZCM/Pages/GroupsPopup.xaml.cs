@@ -84,6 +84,7 @@ public partial class GroupsPopup : ContentPage
             return;
 
         entry.IsPassword = !entry.IsPassword;
+        btn.Text = entry.IsPassword ? "Show" : "Hide";
     }
 
 

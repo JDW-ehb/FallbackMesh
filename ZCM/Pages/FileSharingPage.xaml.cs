@@ -61,4 +61,14 @@ public partial class FileSharingPage : ContentPage, IDrawerPage
         await Navigation.PushModalAsync(
             new MySharedFilesPopup(_vm));
     }
+
+    private async void OnMyFilesClicked(object sender, EventArgs e)
+    {
+        await _vm.LoadMyFilesAsync();
+    }
+
+    private async void OnAllNetworkFilesClicked(object sender, EventArgs e)
+    {
+        await _vm.LoadAllNetworkFilesAsync();
+    }
 }

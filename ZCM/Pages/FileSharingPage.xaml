@@ -17,34 +17,34 @@
             <Grid ColumnDefinitions="320,*">
 
                 <Grid Grid.Column="0"
-                      RowDefinitions="Auto,Auto,Auto,*,Auto"
+                      RowDefinitions="Auto,Auto,Auto,Auto,*,Auto"
                       Padding="16"
                       BackgroundColor="#151515">
 
                     <!-- Header -->
                     <Grid Grid.Row="0"
-      ColumnDefinitions="Auto,*"
-      ColumnSpacing="12">
+                          ColumnDefinitions="Auto,*"
+                          ColumnSpacing="12">
 
                         <Button Text="☰"
-            WidthRequest="44"
-            HeightRequest="44"
-            FontSize="20"
-            BackgroundColor="#2A2A2A"
-            TextColor="White"
-            CornerRadius="12"
-            Command="{Binding Source={x:Reference Drawer}, Path=ToggleCommand}" />
+                                WidthRequest="44"
+                                HeightRequest="44"
+                                FontSize="20"
+                                BackgroundColor="#2A2A2A"
+                                TextColor="White"
+                                CornerRadius="12"
+                                Command="{Binding Source={x:Reference Drawer}, Path=ToggleCommand}" />
 
                         <Label Grid.Column="1"
-           Text="File Sharing"
-           FontSize="22"
-           FontAttributes="Bold"
-           VerticalOptions="Center"
-           TextColor="White" />
+                               Text="File Sharing"
+                               FontSize="22"
+                               FontAttributes="Bold"
+                               VerticalOptions="Center"
+                               TextColor="White" />
 
                     </Grid>
 
-                    <Frame Grid.Row="2"
+                    <Frame Grid.Row="1"
                            Margin="0,16"
                            Padding="16"
                            CornerRadius="16"
@@ -70,7 +70,36 @@
                         </VerticalStackLayout>
                     </Frame>
 
-                    <CollectionView Grid.Row="3"
+                    <!-- Quick-filter buttons -->
+                    <VerticalStackLayout Grid.Row="2" Spacing="8" Margin="0,0,0,12">
+
+                        <Button Text="📁  My Files"
+                                Clicked="OnMyFilesClicked"
+                                BackgroundColor="#2A2A2A"
+                                TextColor="White"
+                                CornerRadius="12"
+                                Padding="12,10"
+                                HorizontalOptions="Fill" />
+
+                        <Button Text="🌐  All Network Files"
+                                Clicked="OnAllNetworkFilesClicked"
+                                BackgroundColor="#2A2A2A"
+                                TextColor="White"
+                                CornerRadius="12"
+                                Padding="12,10"
+                                HorizontalOptions="Fill" />
+
+                    </VerticalStackLayout>
+
+                    <!-- Separator label -->
+                    <Label Grid.Row="3"
+                           Text="Peers"
+                           FontSize="12"
+                           FontAttributes="Bold"
+                           TextColor="#888888"
+                           Margin="4,0,0,6" />
+
+                    <CollectionView Grid.Row="4"
                                     ItemsSource="{Binding Peers}"
                                     SelectionMode="Single"
                                     SelectionChanged="OnPeerSelectionChanged">
@@ -95,7 +124,7 @@
                         </CollectionView.ItemTemplate>
                     </CollectionView>
 
-                    <Frame Grid.Row="4"
+                    <Frame Grid.Row="5"
                            Margin="0,16,0,0"
                            Padding="14"
                            CornerRadius="14"
@@ -122,7 +151,7 @@
                       RowDefinitions="Auto,Auto,*"
                       Padding="20">
 
-                    <Label Text="Shared files"
+                    <Label Text="{Binding FilesHeaderText}"
                            FontSize="18"
                            FontAttributes="Bold"
                            TextColor="White"/>
@@ -152,7 +181,7 @@
                         </CollectionView.ItemsLayout>
 
                         <CollectionView.EmptyView>
-                            <Label Text="Select a peer to view shared files"
+                            <Label Text="Select a peer or filter to view shared files"
                                    TextColor="#666666"
                                    HorizontalOptions="Center"
                                    VerticalOptions="Center"/>
@@ -169,7 +198,14 @@
                                           ColumnSpacing="20"
                                           VerticalOptions="Center">
 
-                                        <Label Text="{Binding Name}" TextColor="White" LineBreakMode="TailTruncation"/>
+                                        <VerticalStackLayout Spacing="2">
+                                            <Label Text="{Binding Name}" TextColor="White" LineBreakMode="TailTruncation"/>
+                                            <Label Text="{Binding OwnerHostName}"
+                                                   TextColor="#888888"
+                                                   FontSize="11"
+                                                   IsVisible="{Binding OwnerHostName, Converter={x:Static x:NullToBoolConverter.Instance}}" />
+                                        </VerticalStackLayout>
+
                                         <Label Grid.Column="1" Text="{Binding SharedSinceText}" TextColor="#CCCCCC" HorizontalOptions="Center"/>
                                         <Label Grid.Column="2" Text="{Binding Type}" TextColor="#CCCCCC" HorizontalOptions="Center"/>
                                         <Label Grid.Column="3" Text="{Binding SizeText}" TextColor="#CCCCCC" HorizontalOptions="Center"/>
@@ -178,6 +214,7 @@
                                                 Text="Download"
                                                 Command="{Binding Source={RelativeSource AncestorType={x:Type ContentPage}}, Path=BindingContext.DownloadCommand}"
                                                 CommandParameter="{Binding .}"
+                                                IsVisible="{Binding IsLocal, Converter={x:Static x:InverseBoolConverter.Instance}}"
                                                 BackgroundColor="#6B5DD3"
                                                 TextColor="White"
                                                 CornerRadius="10"

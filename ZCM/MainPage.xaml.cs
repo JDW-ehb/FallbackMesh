@@ -273,21 +273,20 @@ public partial class MainPage : ContentPage
             .OrderByDescending(f => f.SharedSince)
             .ToList();
 
-        // Update the collection
-        var newFileIds = files.Select(f => f.Id).ToHashSet();
-        var existingFileIds = SharedFiles.Select(f => f.Id).ToHashSet();
+        // Use Checksum as stable key — DB Ids may change on re-sync
+        var newKeys = files.Select(f => f.Checksum).ToHashSet();
 
         // Remove files that no longer exist
         for (int i = SharedFiles.Count - 1; i >= 0; i--)
         {
-            if (!newFileIds.Contains(SharedFiles[i].Id))
+            if (!newKeys.Contains(SharedFiles[i].Checksum))
                 SharedFiles.RemoveAt(i);
         }
 
         // Add or update files
         foreach (var file in files)
         {
-            var existing = SharedFiles.FirstOrDefault(f => f.Id == file.Id);
+            var existing = SharedFiles.FirstOrDefault(f => f.Checksum == file.Checksum);
             if (existing == null)
             {
                 SharedFiles.Add(new SharedFileCard
@@ -303,6 +302,8 @@ public partial class MainPage : ContentPage
             }
             else
             {
+                // Update in-place — no remove/add, so no UI flicker
+                existing.Id = file.Id;
                 existing.FileName = file.FileName;
                 existing.FileSize = file.FileSize;
                 existing.FileType = file.FileType;

@@ -205,16 +205,16 @@
                    CornerRadius="18"
                    Padding="20">
 
-                <VerticalStackLayout Spacing="12" VerticalOptions="Fill">
+                <Grid RowDefinitions="Auto,*" RowSpacing="12">
 
                     <Label Text="Activity"
                            FontSize="18"
                            TextColor="White"
                            FontAttributes="Bold"/>
 
-                    <CollectionView ItemsSource="{Binding ActivityFeed}"
-                                    SelectionMode="None"
-                                    VerticalOptions="FillAndExpand">
+                    <CollectionView Grid.Row="1"
+                                    ItemsSource="{Binding ActivityFeed}"
+                                    SelectionMode="None">
 
                         <CollectionView.ItemTemplate>
                             <DataTemplate>
@@ -235,7 +235,7 @@
 
                     </CollectionView>
 
-                </VerticalStackLayout>
+                </Grid>
 
             </Frame>
 
@@ -411,7 +411,43 @@
                                     ItemsSource="{Binding TrustGroupLines}"
                                     SelectionMode="None"
                                     VerticalOptions="FillAndExpand"
-                                    Margin="0,6,0,0"/>
+                                    Margin="0,6,0,0">
+
+                        <CollectionView.EmptyView>
+                            <Label Text="No trust groups found"
+                                   TextColor="#888888"
+                                   Margin="0,6,0,0"/>
+                        </CollectionView.EmptyView>
+
+                        <CollectionView.ItemTemplate>
+                            <DataTemplate>
+                                <Frame BackgroundColor="#1A1A1A"
+                                       Padding="12"
+                                       CornerRadius="12"
+                                       HasShadow="False"
+                                       Margin="0,4">
+
+                                    <Grid ColumnDefinitions="Auto,*"
+                                          ColumnSpacing="10">
+
+                                        <BoxView WidthRequest="10"
+                                                 HeightRequest="10"
+                                                 CornerRadius="5"
+                                                 VerticalOptions="Center"
+                                                 Color="{Binding IsEnabled, Converter={StaticResource OnlineStatusColorConverter}}"/>
+
+                                        <Label Grid.Column="1"
+                                               Text="{Binding Name}"
+                                               TextColor="White"
+                                               FontSize="13"
+                                               VerticalOptions="Center"/>
+
+                                    </Grid>
+                                </Frame>
+                            </DataTemplate>
+                        </CollectionView.ItemTemplate>
+
+                    </CollectionView>
 
                 </Grid>
 

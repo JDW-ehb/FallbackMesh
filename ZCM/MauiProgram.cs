@@ -18,6 +18,7 @@ using ZCL.Services.FileSharing;
 using ZCL.Services.LLM;
 using ZCL.Services.Messaging;
 using ZCM.Security;
+using ZCM.Services;
 
 namespace ZCM;
 
@@ -221,6 +222,7 @@ public static class MauiProgram
         builder.Services.AddSingleton<MessagingService>();
         builder.Services.AddSingleton<FileSharingService>();
         builder.Services.AddSingleton<LLMChatService>();
+        builder.Services.AddSingleton<ActivityService>();
 
         builder.Services.AddSingleton<Func<string>>(_ =>
         {

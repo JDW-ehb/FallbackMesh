@@ -10,13 +10,14 @@ using ZCL.Models;
 using ZCL.Repositories.Security;   // ITrustGroupRepository
 using ZCL.Services.FileSharing;
 using ZCM.Pages;
+using ZCM.Services;
 
 namespace ZCM;
 
 public class PeerDonutDrawable : IDrawable
 {
     public int Online { get; set; }
-    public int Offline { get; set; }
+    public int Offline { get; set; }        
 
     public void Draw(ICanvas canvas, RectF rect)
     {
@@ -93,16 +94,21 @@ public partial class MainPage : ContentPage
     public int PeersNeverMessagedCount { get; private set; }
 
     private readonly DataStore _store;
+    private readonly ActivityService _activity;
     private readonly PeerDonutDrawable _donutDrawable = new();
 
+    // Track previous counts to detect real changes
+    private int _prevMessageCount;
+    private readonly HashSet<string> _knownPeerIds = new();
+    private readonly HashSet<string> _knownFileChecksums = new();
 
     public ObservableCollection<string> AdvertisedServices { get; } = new();
     public ObservableCollection<PeerNodeCard> Peers { get; } = new();
     public ObservableCollection<ConversationPreview> RecentConversations { get; } = new();
     public ObservableCollection<SharedFileCard> SharedFiles { get; } = new();
 
-    public ObservableCollection<string> TrustGroupLines { get; } = new();
-    public int TrustedGroupsCount => TrustGroupLines.Count;
+    public ObservableCollection<TrustGroupItem> TrustGroupLines { get; } = new();
+    public int TrustedGroupsCount => TrustGroupLines.Count(g => g.IsEnabled);
 
     public int OnlineCount => Peers.Count(p => p.IsUp);
     public int OfflineCount => Peers.Count(p => !p.IsUp);
@@ -117,11 +123,7 @@ public partial class MainPage : ContentPage
     public int AvailableModelsCount =>
         Peers.Sum(p => p.Services.Count(s => s.StartsWith("LLMChat")));
 
-    public ObservableCollection<string> ActivityFeed { get; } = new()
-    {
-        "System started",
-        "Waiting for peer activity..."
-    };
+    public ObservableCollection<string> ActivityFeed { get; } = new();
 
     private IDispatcherTimer? _timer;
 
@@ -130,9 +132,31 @@ public partial class MainPage : ContentPage
         InitializeComponent();
 
         _store = ServiceHelper.GetService<DataStore>();
+        _activity = ServiceHelper.GetService<ActivityService>();
         BindingContext = this;
 
         PeerDonutView.Drawable = _donutDrawable;
+
+        // Subscribe to activity events from anywhere in the app
+        _activity.EntryAdded += OnActivityEntryAdded;
+
+        // Load any entries already logged before this page was created
+        foreach (var entry in _activity.GetAll())
+            ActivityFeed.Add(entry);
+
+        _activity.Log("Dashboard opened");
+    }
+
+    private void OnActivityEntryAdded(string entry)
+    {
+        MainThread.BeginInvokeOnMainThread(() =>
+        {
+            ActivityFeed.Insert(0, entry);
+
+            // Keep the UI list bounded
+            while (ActivityFeed.Count > 50)
+                ActivityFeed.RemoveAt(ActivityFeed.Count - 1);
+        });
     }
 
     protected override void OnAppearing()
@@ -148,8 +172,8 @@ public partial class MainPage : ContentPage
             {
                 SyncPeers();
 
-                await RefreshRemoteSharedFilesAsync(); // <- populates db.SharedFiles from other peers
-                SyncSharedFiles();                    // <- reads db.SharedFiles into SharedFiles (UI)
+                await RefreshRemoteSharedFilesAsync();
+                SyncSharedFiles();
 
                 foreach (var card in Peers)
                     card.RefreshComputedText();
@@ -166,7 +190,6 @@ public partial class MainPage : ContentPage
         SyncSharedFiles();
         RefreshDashboardCounts();
         RefreshMessagingStats();
-        // ✅ Pull groups once on page open
         _ = SyncTrustGroupsAsync();
         _ = SyncAdvertisedServicesAsync();
     }
@@ -185,6 +208,14 @@ public partial class MainPage : ContentPage
 
         // total messages
         TotalMessagesCount = db.Messages.Count();
+
+        // Log new messages
+        if (TotalMessagesCount > _prevMessageCount && _prevMessageCount > 0)
+        {
+            var newCount = TotalMessagesCount - _prevMessageCount;
+            _activity.Log($"{newCount} new message{(newCount > 1 ? "s" : "")} received");
+        }
+        _prevMessageCount = TotalMessagesCount;
 
         // peers we ever messaged
         var peersMessaged = db.Messages
@@ -206,6 +237,7 @@ public partial class MainPage : ContentPage
         OnPropertyChanged(nameof(PeersMessagedCount));
         OnPropertyChanged(nameof(PeersNeverMessagedCount));
     }
+
     private void RefreshDashboardCounts()
     {
         OnPropertyChanged(nameof(OnlineCount));
@@ -218,10 +250,9 @@ public partial class MainPage : ContentPage
         _donutDrawable.Online = OnlineCount;
         _donutDrawable.Offline = OfflineCount;
         PeerDonutView.Invalidate();
-
     }
 
-    // ✅ Trust groups -> "Part of group X"
+    // ✅ Trust groups -> show all with enabled/disabled status
     private async Task SyncTrustGroupsAsync()
     {
         try
@@ -229,33 +260,34 @@ public partial class MainPage : ContentPage
             using var scope = ServiceHelper.Services.CreateScope();
             var repo = scope.ServiceProvider.GetRequiredService<ITrustGroupRepository>();
 
-            var enabled = await repo.GetEnabledAsync();
+            var all = await repo.GetAllAsync();
 
-            // Adjust this if your entity uses a different property name
-            var lines = enabled
-                .Select(g => $"Part of group {g.Name}")
+            var items = all
+                .Select(g => new TrustGroupItem { Name = g.Name, IsEnabled = g.IsEnabled })
                 .ToList();
 
             await MainThread.InvokeOnMainThreadAsync(() =>
             {
                 // Only redraw if changed (prevents flicker)
-                if (TrustGroupLines.SequenceEqual(lines))
+                if (TrustGroupLines.Count == items.Count &&
+                    TrustGroupLines.Zip(items).All(p => p.First.Name == p.Second.Name && p.First.IsEnabled == p.Second.IsEnabled))
                     return;
 
                 TrustGroupLines.Clear();
-                foreach (var l in lines)
-                    TrustGroupLines.Add(l);
+                foreach (var item in items)
+                    TrustGroupLines.Add(item);
 
                 OnPropertyChanged(nameof(TrustedGroupsCount));
             });
+
+            _activity.Log($"Trust groups synced — {items.Count(i => i.IsEnabled)} enabled");
         }
         catch (Exception ex)
         {
-            // If repo blows up, don't crash the UI — just show something.
             await MainThread.InvokeOnMainThreadAsync(() =>
             {
                 TrustGroupLines.Clear();
-                TrustGroupLines.Add($"Trust groups unavailable: {ex.Message}");
+                TrustGroupLines.Add(new TrustGroupItem { Name = $"Trust groups unavailable: {ex.Message}", IsEnabled = false });
                 OnPropertyChanged(nameof(TrustedGroupsCount));
             });
         }
@@ -266,21 +298,23 @@ public partial class MainPage : ContentPage
         using var scope = ServiceHelper.Services.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<ServiceDBContext>();
 
-        // Get all shared files from the network (excluding local files if needed)
         var files = db.SharedFiles
             .Include(f => f.Peer)
             .Where(f => f.IsAvailable)
             .OrderByDescending(f => f.SharedSince)
             .ToList();
 
-        // Use Checksum as stable key — DB Ids may change on re-sync
         var newKeys = files.Select(f => f.Checksum).ToHashSet();
 
         // Remove files that no longer exist
         for (int i = SharedFiles.Count - 1; i >= 0; i--)
         {
             if (!newKeys.Contains(SharedFiles[i].Checksum))
+            {
+                _activity.Log($"File removed: {SharedFiles[i].FileName}");
+                _knownFileChecksums.Remove(SharedFiles[i].Checksum);
                 SharedFiles.RemoveAt(i);
+            }
         }
 
         // Add or update files
@@ -299,10 +333,12 @@ public partial class MainPage : ContentPage
                     SharedSince = file.SharedSince,
                     Checksum = file.Checksum
                 });
+
+                if (_knownFileChecksums.Add(file.Checksum))
+                    _activity.Log($"New shared file: {file.FileName} from {file.Peer.HostName}");
             }
             else
             {
-                // Update in-place — no remove/add, so no UI flicker
                 existing.Id = file.Id;
                 existing.FileName = file.FileName;
                 existing.FileSize = file.FileSize;
@@ -317,13 +353,22 @@ public partial class MainPage : ContentPage
         => await Navigation.PushModalAsync(new DiscoveryPopup(this), false);
 
     private async void MessagingButton_Clicked(object sender, EventArgs e)
-        => await Shell.Current.GoToAsync(nameof(MessagingPage));
+    {
+        _activity.Log("Navigated to Messaging");
+        await Shell.Current.GoToAsync(nameof(MessagingPage));
+    }
 
     private async void LlmButton_Clicked(object sender, EventArgs e)
-        => await Shell.Current.GoToAsync(nameof(LLMChatPage));
+    {
+        _activity.Log("Navigated to LLM Chat");
+        await Shell.Current.GoToAsync(nameof(LLMChatPage));
+    }
 
     private async void ShareButton_Clicked(object sender, EventArgs e)
-        => await Shell.Current.GoToAsync(nameof(FileSharingPage));
+    {
+        _activity.Log("Navigated to File Sharing");
+        await Shell.Current.GoToAsync(nameof(FileSharingPage));
+    }
 
     private async void SettingsButton_Clicked(object sender, EventArgs e)
         => await Navigation.PushModalAsync(new SettingsPage(), false);
@@ -376,16 +421,34 @@ public partial class MainPage : ContentPage
             var existing = Peers.FirstOrDefault(x => x.ProtocolPeerId == p.ProtocolPeerId);
 
             if (existing == null)
+            {
                 Peers.Add(new PeerNodeCard(p, db));
+
+                if (_knownPeerIds.Add(p.ProtocolPeerId))
+                    _activity.Log($"Peer discovered: {p.HostName} ({p.IpAddress})");
+            }
             else
+            {
+                var wasUp = existing.IsUp;
                 existing.UpdateFrom(p, db);
+
+                // Detect status transitions
+                if (!wasUp && existing.IsUp)
+                    _activity.Log($"Peer online: {p.HostName}");
+                else if (wasUp && !existing.IsUp)
+                    _activity.Log($"Peer offline: {p.HostName}");
+            }
         }
 
         for (int i = Peers.Count - 1; i >= 0; i--)
         {
             var card = Peers[i];
             if (!_store.Peers.Any(p => p.ProtocolPeerId == card.ProtocolPeerId))
+            {
+                _activity.Log($"Peer removed: {card.HostName}");
+                _knownPeerIds.Remove(card.ProtocolPeerId);
                 Peers.RemoveAt(i);
+            }
         }
     }
 
@@ -408,12 +471,15 @@ public partial class MainPage : ContentPage
             OnPropertyChanged(nameof(AdvertisesMessaging));
             OnPropertyChanged(nameof(AdvertisesFileSharing));
             OnPropertyChanged(nameof(AdvertisesLLMChat));
+
+            _activity.Log($"Services advertised: {string.Join(", ", enabled)}");
         }
         catch
         {
             // ignore if table not ready yet
         }
     }
+
     private async Task RefreshRemoteSharedFilesAsync()
     {
         // throttle network calls
@@ -444,8 +510,12 @@ public partial class MainPage : ContentPage
                 // ignore per-peer failures
             }
         }
+    }
 
-
+    public class TrustGroupItem
+    {
+        public string Name { get; set; } = "";
+        public bool IsEnabled { get; set; }
     }
 
     public class ConversationPreview
@@ -555,8 +625,6 @@ public partial class MainPage : ContentPage
 
             return $"{len:0.##} {sizes[order]}";
         }
-
-
     }
 
     public sealed class PeerNodeCard : INotifyPropertyChanged
@@ -644,11 +712,6 @@ public partial class MainPage : ContentPage
             if (diff.TotalDays < 365) return $"{(int)Math.Round(diff.TotalDays / 30)}mo ago";
             return $"{(int)Math.Round(diff.TotalDays / 365)}y ago";
         }
-
-
-
-
-
     }
 
     private void ExitButton_Clicked(object sender, EventArgs e)

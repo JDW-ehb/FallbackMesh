@@ -44,18 +44,21 @@
 
                 <Button Text="LLM"
                         Clicked="LlmButton_Clicked"
+                        IsEnabled="{Binding AdvertisesLLMChat}"
                         BackgroundColor="#2A2A2A"
                         TextColor="White"
                         CornerRadius="12"/>
 
                 <Button Text="MSG"
                         Clicked="MessagingButton_Clicked"
+                        IsEnabled="{Binding AdvertisesMessaging}"
                         BackgroundColor="#2A2A2A"
                         TextColor="White"
                         CornerRadius="12"/>
 
                 <Button Text="Share"
                         Clicked="ShareButton_Clicked"
+                        IsEnabled="{Binding AdvertisesFileSharing}"
                         BackgroundColor="#2A2A2A"
                         TextColor="White"
                         CornerRadius="12"/>

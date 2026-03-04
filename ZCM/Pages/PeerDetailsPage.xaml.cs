@@ -1,3 +1,4 @@
+using Microsoft.EntityFrameworkCore;
 using ZCL.Models;
 using System.Diagnostics;
 
@@ -34,22 +35,14 @@ public partial class PeerDetailsPage : ContentPage
         if (sender is not Button btn || _card is null)
             return;
 
-        // Get the original service name from CommandParameter
-        // If CommandParameter is not set, try getting it from the button's BindingContext
         var serviceName = btn.CommandParameter as string;
 
         if (string.IsNullOrEmpty(serviceName))
         {
-            // Fallback: reconstruct from the displayed text
             if (btn.Text == "LLM")
-            {
-                // Find the actual LLMChat service from the card's Services collection
                 serviceName = _card.Services.FirstOrDefault(s => s.StartsWith("LLMChat", StringComparison.OrdinalIgnoreCase));
-            }
             else
-            {
                 serviceName = btn.Text;
-            }
         }
 
         if (string.IsNullOrEmpty(serviceName))
@@ -60,12 +53,38 @@ public partial class PeerDetailsPage : ContentPage
 
         Debug.WriteLine($"ServiceClicked: {serviceName}");
 
+        // Map to the local announced service name
+        var localServiceName = serviceName switch
+        {
+            var s when s.StartsWith("Messaging", StringComparison.OrdinalIgnoreCase) => "Messaging",
+            var s when s.StartsWith("Filesharing", StringComparison.OrdinalIgnoreCase) => "FileSharing",
+            var s when s.StartsWith("LLMChat", StringComparison.OrdinalIgnoreCase) => "LLMChat",
+            _ => null
+        };
+
+        // Check if the local peer has this service enabled
+        if (localServiceName != null)
+        {
+            using var scope = ServiceHelper.Services.CreateScope();
+            var db = scope.ServiceProvider.GetRequiredService<ServiceDBContext>();
+
+            var isEnabled = await db.AnnouncedServiceSettings
+                .AnyAsync(s => s.ServiceName == localServiceName && s.IsEnabled);
+
+            if (!isEnabled)
+            {
+                await DisplayAlert(
+                    "Service Disabled",
+                    $"{localServiceName} is not enabled on your node. Enable it in Settings first.",
+                    "OK");
+                return;
+            }
+        }
+
         var peer = _card.ToPeerNode();
 
-        // Grab Shell navigation BEFORE popping, so the reference stays valid
         var nav = Shell.Current.Navigation;
 
-        // Close PeerDetailsPage modal, then the DiscoveryPopup underneath
         await nav.PopModalAsync(false);
         await nav.PopModalAsync(false);
 

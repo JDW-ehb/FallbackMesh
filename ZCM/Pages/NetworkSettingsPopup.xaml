@@ -33,7 +33,7 @@
                     <Label Text="Discovery Port"
                            TextColor="#CCCCCC"/>
 
-                    <Entry Text="{Binding DiscoveryPort}"
+                    <Entry Text="{Binding TempDiscoveryPort}"
                            Keyboard="Numeric"
                            BackgroundColor="#333333"
                            TextColor="White"/>
@@ -45,7 +45,7 @@
                     <Label Text="Multicast Address"
                            TextColor="#CCCCCC"/>
 
-                    <Entry Text="{Binding MulticastAddress}"
+                    <Entry Text="{Binding TempMulticastAddress}"
                            BackgroundColor="#333333"
                            TextColor="White"/>
 
@@ -56,19 +56,32 @@
                     <Label Text="Discovery Timeout (ms)"
                            TextColor="#CCCCCC"/>
 
-                    <Entry Text="{Binding DiscoveryTimeoutMSText}"
+                    <Entry Text="{Binding TempDiscoveryTimeout}"
                            Keyboard="Numeric"
                            BackgroundColor="#333333"
                            TextColor="White"/>
 
                 </VerticalStackLayout>
 
-                <Button
-                    Text="Save"
-                    Clicked="OnSaveClicked"
-                    BackgroundColor="#1E88E5"
-                    TextColor="White"
-                    CornerRadius="12"/>
+                <Grid ColumnDefinitions="*,*" ColumnSpacing="10">
+
+                    <Button
+                        Grid.Column="0"
+                        Text="Back"
+                        Clicked="OnBackClicked"
+                        BackgroundColor="#B85C5C"
+                        TextColor="White"
+                        CornerRadius="12"/>
+
+                    <Button
+                        Grid.Column="1"
+                        Text="Save"
+                        Clicked="OnSaveClicked"
+                        BackgroundColor="#1E88E5"
+                        TextColor="White"
+                        CornerRadius="12"/>
+
+                </Grid>
 
             </VerticalStackLayout>
 

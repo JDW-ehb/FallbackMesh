@@ -574,5 +574,7 @@ public partial class MainPage : ContentPage
             if (diff.TotalDays < 365) return $"{(int)Math.Round(diff.TotalDays / 30)}mo ago";
             return $"{(int)Math.Round(diff.TotalDays / 365)}y ago";
         }
+
+
     } 
 }

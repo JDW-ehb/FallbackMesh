@@ -67,8 +67,8 @@
                                         <!-- HEADER ROW -->
                                         <Grid ColumnSpacing="10">
                                             <Grid.ColumnDefinitions>
-                                                <!-- Give name column real guaranteed space -->
                                                 <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="Auto" />
                                                 <ColumnDefinition Width="Auto" />
                                                 <ColumnDefinition Width="Auto" />
                                                 <ColumnDefinition Width="Auto" />
@@ -84,46 +84,48 @@
                                                    HeightRequest="36"
                                                    CornerRadius="8"
                                                    HorizontalOptions="Fill"
-                                                   MinimumWidthRequest="140"
-                                                   LineBreakMode="NoWrap"/>
+                                                   MinimumWidthRequest="140"/>
 
-                                            <!-- Copy Secret (compact text, full meaning via tooltip) -->
+                                            <!-- Copy -->
                                             <Button Grid.Column="1"
                                                     Text="Copy"
-                                                    ToolTipProperties.Text="Copy Secret"
-                                                    SemanticProperties.Hint="Copy Secret"
                                                     Clicked="OnCopySecretClicked"
                                                     BackgroundColor="#333333"
                                                     TextColor="White"
                                                     CornerRadius="8"
                                                     HeightRequest="36"
-                                                    Padding="12,0"
-                                                    MinimumWidthRequest="64"/>
+                                                    Padding="12,0"/>
 
-                                            <!-- Regenerate (compact) -->
+                                            <!-- Regenerate -->
                                             <Button Grid.Column="2"
                                                     Text="Regen"
-                                                    ToolTipProperties.Text="Regenerate Secret"
-                                                    SemanticProperties.Hint="Regenerate Secret"
                                                     Clicked="OnRegenerateSecretClicked"
                                                     BackgroundColor="#333333"
                                                     TextColor="White"
                                                     CornerRadius="8"
                                                     HeightRequest="36"
-                                                    Padding="12,0"
-                                                    MinimumWidthRequest="72"/>
+                                                    Padding="12,0"/>
 
-                                            <!-- Enabled Label -->
+                                            <!-- Enabled -->
                                             <Label Grid.Column="3"
                                                    Text="Enabled"
                                                    VerticalOptions="Center"
                                                    TextColor="#CCCCCC"
                                                    FontSize="12"/>
 
-                                            <!-- Switch -->
                                             <Switch Grid.Column="4"
                                                     IsToggled="{Binding IsEnabled}"
                                                     VerticalOptions="Center"/>
+
+                                            <!-- DELETE GROUP -->
+                                            <Button Grid.Column="5"
+                                                    Text="✕"
+                                                    Clicked="OnDeleteGroupClicked"
+                                                    BackgroundColor="Transparent"
+                                                    TextColor="#AAAAAA"
+                                                    FontSize="18"
+                                                    WidthRequest="36"
+                                                    HeightRequest="36"/>
                                         </Grid>
 
                                         <!-- SECRET ROW -->
@@ -138,7 +140,6 @@
                                                    BackgroundColor="#333333"
                                                    HeightRequest="36"
                                                    HorizontalOptions="Fill"
-                                                   LineBreakMode="NoWrap"
                                                    FontFamily="Consolas"
                                                    FontSize="12"
                                                    x:Name="SecretEntry"/>
@@ -150,8 +151,7 @@
                                                     TextColor="White"
                                                     CornerRadius="8"
                                                     HeightRequest="36"
-                                                    Padding="12,0"
-                                                    MinimumWidthRequest="72"/>
+                                                    Padding="12,0"/>
                                         </Grid>
 
                                     </VerticalStackLayout>
@@ -165,12 +165,36 @@
 
                 </Grid>
 
-                <!-- Add Group -->
-                <Button Text="+ Add Group"
-                        Clicked="OnAddGroupClicked"
-                        BackgroundColor="#27AE60"
-                        TextColor="White"
-                        CornerRadius="12"/>
+                <!-- Bottom Buttons -->
+                <Grid ColumnDefinitions="Auto,*,Auto"
+                      ColumnSpacing="12">
+
+                    <Button Grid.Column="0"
+                            Text="Back"
+                            Clicked="OnBackClicked"
+                            BackgroundColor="#B85C5C"
+                            TextColor="White"
+                            CornerRadius="12"
+                            Padding="18,8"/>
+
+                    <Button Grid.Column="1"
+                            Text="Add Group +"
+                            Clicked="OnAddGroupClicked"
+                            BackgroundColor="#4A90C2"
+                            TextColor="White"
+                            CornerRadius="12"
+                            HeightRequest="42"
+                            HorizontalOptions="Fill"/>
+
+                    <Button Grid.Column="2"
+                            Text="Save"
+                            Clicked="OnSaveClicked"
+                            BackgroundColor="#3FBF6B"
+                            TextColor="White"
+                            CornerRadius="12"
+                            Padding="18,8"/>
+
+                </Grid>
 
             </VerticalStackLayout>
 

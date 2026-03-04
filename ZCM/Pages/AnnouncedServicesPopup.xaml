@@ -5,6 +5,7 @@
     BackgroundColor="#80000000">
 
     <Grid>
+
         <BoxView BackgroundColor="Transparent">
             <BoxView.GestureRecognizers>
                 <TapGestureRecognizer Tapped="OnBackdropTapped"/>
@@ -21,11 +22,13 @@
 
             <VerticalStackLayout Spacing="14">
 
+                <!-- Header -->
                 <Grid ColumnDefinitions="*,Auto">
                     <Label Text="Announced Services"
                            FontSize="20"
                            FontAttributes="Bold"
                            TextColor="White"/>
+
                     <Button Grid.Column="1"
                             Text="✕"
                             Clicked="OnCloseClicked"
@@ -40,20 +43,62 @@
                        TextColor="#AAAAAA"
                        FontSize="12" />
 
-                <CollectionView ItemsSource="{Binding AnnouncedServices}" SelectionMode="None">
+                <!-- Services -->
+                <CollectionView ItemsSource="{Binding AnnouncedServices}"
+                                SelectionMode="None">
+
                     <CollectionView.ItemTemplate>
                         <DataTemplate>
-                            <Frame Padding="12" CornerRadius="12" BackgroundColor="#2A2A2A" HasShadow="False">
-                                <Grid ColumnDefinitions="*,Auto" ColumnSpacing="12">
-                                    <Label Text="{Binding ServiceName}" TextColor="White" VerticalOptions="Center"/>
-                                    <Switch Grid.Column="1" IsToggled="{Binding IsEnabled}" />
+                            <Frame Padding="12"
+                                   CornerRadius="12"
+                                   BackgroundColor="#2A2A2A"
+                                   HasShadow="False">
+
+                                <Grid ColumnDefinitions="*,Auto"
+                                      ColumnSpacing="12">
+
+                                    <Label Text="{Binding ServiceName}"
+                                           TextColor="White"
+                                           VerticalOptions="Center"/>
+
+                                    <Switch Grid.Column="1"
+                                            IsToggled="{Binding IsEnabled}" />
+
                                 </Grid>
+
                             </Frame>
                         </DataTemplate>
                     </CollectionView.ItemTemplate>
+
                 </CollectionView>
 
+                <!-- Bottom Buttons -->
+                <Grid ColumnDefinitions="Auto,*,Auto"
+                      ColumnSpacing="12">
+
+                    <Button Grid.Column="0"
+                            Text="Back"
+                            Clicked="OnBackClicked"
+                            BackgroundColor="#B85C5C"
+                            TextColor="White"
+                            CornerRadius="12"
+                            Padding="18,8"/>
+
+                    <!-- spacer center -->
+
+                    <Button Grid.Column="2"
+                            Text="Save"
+                            Clicked="OnSaveClicked"
+                            BackgroundColor="#3FBF6B"
+                            TextColor="White"
+                            CornerRadius="12"
+                            Padding="18,8"/>
+
+                </Grid>
+
             </VerticalStackLayout>
+
         </Frame>
+
     </Grid>
 </ContentPage>

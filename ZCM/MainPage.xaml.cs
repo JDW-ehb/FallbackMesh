@@ -84,14 +84,23 @@ public partial class MainPage : ContentPage
     private DateTime _lastListRefreshUtc = DateTime.MinValue;
     private static readonly TimeSpan ListRefreshInterval = TimeSpan.FromSeconds(10);
 
+    public bool AdvertisesMessaging { get; private set; }
+    public bool AdvertisesFileSharing { get; private set; }
+    public bool AdvertisesLLMChat { get; private set; }
+
+    public int TotalMessagesCount { get; private set; }
+    public int PeersMessagedCount { get; private set; }
+    public int PeersNeverMessagedCount { get; private set; }
+
     private readonly DataStore _store;
     private readonly PeerDonutDrawable _donutDrawable = new();
 
+
+    public ObservableCollection<string> AdvertisedServices { get; } = new();
     public ObservableCollection<PeerNodeCard> Peers { get; } = new();
     public ObservableCollection<ConversationPreview> RecentConversations { get; } = new();
     public ObservableCollection<SharedFileCard> SharedFiles { get; } = new();
 
-    // ✅ Trust panel lines: "Part of group X"
     public ObservableCollection<string> TrustGroupLines { get; } = new();
     public int TrustedGroupsCount => TrustGroupLines.Count;
 
@@ -146,6 +155,7 @@ public partial class MainPage : ContentPage
                     card.RefreshComputedText();
 
                 RefreshDashboardCounts();
+                RefreshMessagingStats();
             };
 
             _timer.Start();
@@ -155,9 +165,10 @@ public partial class MainPage : ContentPage
         SyncConversations();
         SyncSharedFiles();
         RefreshDashboardCounts();
-
+        RefreshMessagingStats();
         // ✅ Pull groups once on page open
         _ = SyncTrustGroupsAsync();
+        _ = SyncAdvertisedServicesAsync();
     }
 
     protected override void OnDisappearing()
@@ -167,6 +178,34 @@ public partial class MainPage : ContentPage
         _timer = null;
     }
 
+    private void RefreshMessagingStats()
+    {
+        using var scope = ServiceHelper.Services.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<ServiceDBContext>();
+
+        // total messages
+        TotalMessagesCount = db.Messages.Count();
+
+        // peers we ever messaged
+        var peersMessaged = db.Messages
+            .Select(m => m.ToPeerId)
+            .Distinct()
+            .ToHashSet();
+
+        PeersMessagedCount = peersMessaged.Count;
+
+        // peers never messaged
+        var knownPeers = db.PeerNodes
+            .Where(p => !p.IsLocal)
+            .Select(p => p.PeerId)
+            .ToList();
+
+        PeersNeverMessagedCount = knownPeers.Count(p => !peersMessaged.Contains(p));
+
+        OnPropertyChanged(nameof(TotalMessagesCount));
+        OnPropertyChanged(nameof(PeersMessagedCount));
+        OnPropertyChanged(nameof(PeersNeverMessagedCount));
+    }
     private void RefreshDashboardCounts()
     {
         OnPropertyChanged(nameof(OnlineCount));
@@ -179,6 +218,7 @@ public partial class MainPage : ContentPage
         _donutDrawable.Online = OnlineCount;
         _donutDrawable.Offline = OfflineCount;
         PeerDonutView.Invalidate();
+
     }
 
     // ✅ Trust groups -> "Part of group X"
@@ -348,6 +388,31 @@ public partial class MainPage : ContentPage
         }
     }
 
+    private async Task SyncAdvertisedServicesAsync()
+    {
+        try
+        {
+            using var scope = ServiceHelper.Services.CreateScope();
+            var db = scope.ServiceProvider.GetRequiredService<ServiceDBContext>();
+
+            var enabled = await db.AnnouncedServiceSettings
+                .Where(x => x.IsEnabled)
+                .Select(x => x.ServiceName)
+                .ToListAsync();
+
+            AdvertisesMessaging = enabled.Contains("Messaging");
+            AdvertisesFileSharing = enabled.Contains("FileSharing");
+            AdvertisesLLMChat = enabled.Contains("LLMChat");
+
+            OnPropertyChanged(nameof(AdvertisesMessaging));
+            OnPropertyChanged(nameof(AdvertisesFileSharing));
+            OnPropertyChanged(nameof(AdvertisesLLMChat));
+        }
+        catch
+        {
+            // ignore if table not ready yet
+        }
+    }
     private async Task RefreshRemoteSharedFilesAsync()
     {
         // throttle network calls
@@ -378,6 +443,8 @@ public partial class MainPage : ContentPage
                 // ignore per-peer failures
             }
         }
+
+
     }
 
     public class ConversationPreview
@@ -487,6 +554,8 @@ public partial class MainPage : ContentPage
 
             return $"{len:0.##} {sizes[order]}";
         }
+
+
     }
 
     public sealed class PeerNodeCard : INotifyPropertyChanged
@@ -576,5 +645,8 @@ public partial class MainPage : ContentPage
         }
 
 
-    } 
+
+
+
+    }
 }

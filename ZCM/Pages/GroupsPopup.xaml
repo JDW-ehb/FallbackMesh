@@ -5,6 +5,7 @@
     BackgroundColor="#80000000">
 
     <Grid>
+
         <!-- Backdrop -->
         <BoxView BackgroundColor="Transparent">
             <BoxView.GestureRecognizers>
@@ -13,7 +14,8 @@
         </BoxView>
 
         <!-- Popup -->
-        <Frame WidthRequest="700"
+        <Frame WidthRequest="575"
+               MaximumHeightRequest="650"
                Padding="20"
                CornerRadius="18"
                BackgroundColor="#1F1F1F"
@@ -46,84 +48,157 @@
                        FontSize="12" />
 
                 <!-- Groups List -->
-                <CollectionView ItemsSource="{Binding Groups}"
-                                SelectionMode="None">
+                <Grid RowDefinitions="*"
+                      HeightRequest="400">
 
-                    <CollectionView.ItemTemplate>
-                        <DataTemplate>
+                    <CollectionView ItemsSource="{Binding Groups}"
+                                    SelectionMode="None">
 
-                            <Frame Padding="12"
-                                   CornerRadius="12"
-                                   BackgroundColor="#2A2A2A"
-                                   HasShadow="False">
+                        <CollectionView.ItemTemplate>
+                            <DataTemplate>
 
-                                <VerticalStackLayout Spacing="10">
+                                <Frame Padding="16"
+                                       CornerRadius="16"
+                                       BackgroundColor="#2A2A2A"
+                                       HasShadow="False">
 
-                                    <!-- Group Name -->
-                                    <Entry Text="{Binding Name}"
-                                           TextColor="White"
-                                           Placeholder="Group Name" />
+                                    <VerticalStackLayout Spacing="12">
 
-                                    <!-- Secret with Show Toggle -->
-                                    <Grid ColumnDefinitions="*,Auto"
-                                          ColumnSpacing="8">
+                                        <!-- HEADER ROW -->
+                                        <Grid ColumnSpacing="10">
+                                            <Grid.ColumnDefinitions>
+                                                <ColumnDefinition Width="*" />
+                                                <ColumnDefinition Width="Auto" />
+                                                <ColumnDefinition Width="Auto" />
+                                                <ColumnDefinition Width="Auto" />
+                                                <ColumnDefinition Width="Auto" />
+                                                <ColumnDefinition Width="Auto" />
+                                            </Grid.ColumnDefinitions>
 
-                                        <Entry Grid.Column="0"
-                                               Text="{Binding SecretHex}"
-                                               IsPassword="True"
-                                               TextColor="White"
-                                               Placeholder="Group Secret (hex)"
-                                               x:Name="SecretEntry"/>
+                                            <!-- Group Name -->
+                                            <Entry Grid.Column="0"
+                                                   Text="{Binding Name}"
+                                                   TextColor="White"
+                                                   Placeholder="Group Name"
+                                                   BackgroundColor="#333333"
+                                                   HeightRequest="36"
+                                                   CornerRadius="8"
+                                                   HorizontalOptions="Fill"
+                                                   MinimumWidthRequest="140"/>
 
-                                        <Button Grid.Column="1"
-                                                Text="👁"
-                                                Clicked="OnToggleSecretClicked"
-                                                BackgroundColor="#333333"
-                                                TextColor="White"
-                                                CornerRadius="8"
-                                                WidthRequest="40"/>
-                                    </Grid>
+                                            <!-- Copy -->
+                                            <Button Grid.Column="1"
+                                                    Text="Copy"
+                                                    Clicked="OnCopySecretClicked"
+                                                    BackgroundColor="#333333"
+                                                    TextColor="White"
+                                                    CornerRadius="8"
+                                                    HeightRequest="36"
+                                                    Padding="12,0"/>
 
-                                    <!-- Secret Actions -->
-                                    <HorizontalStackLayout Spacing="8">
+                                            <!-- Regenerate -->
+                                            <Button Grid.Column="2"
+                                                    Text="Regen"
+                                                    Clicked="OnRegenerateSecretClicked"
+                                                    BackgroundColor="#333333"
+                                                    TextColor="White"
+                                                    CornerRadius="8"
+                                                    HeightRequest="36"
+                                                    Padding="12,0"/>
 
-                                        <Button Text="Copy"
-                                                Clicked="OnCopySecretClicked"
-                                                BackgroundColor="#333333"
-                                                TextColor="White"
-                                                CornerRadius="8" />
+                                            <!-- Enabled -->
+                                            <Label Grid.Column="3"
+                                                   Text="Enabled"
+                                                   VerticalOptions="Center"
+                                                   TextColor="#CCCCCC"
+                                                   FontSize="12"/>
 
-                                        <Button Text="Regenerate"
-                                                Clicked="OnRegenerateSecretClicked"
-                                                BackgroundColor="#333333"
-                                                TextColor="White"
-                                                CornerRadius="8" />
+                                            <Switch Grid.Column="4"
+                                                    IsToggled="{Binding IsEnabled}"
+                                                    VerticalOptions="Center"/>
 
-                                    </HorizontalStackLayout>
+                                            <!-- DELETE GROUP -->
+                                            <Button Grid.Column="5"
+                                                    Text="✕"
+                                                    Clicked="OnDeleteGroupClicked"
+                                                    BackgroundColor="Transparent"
+                                                    TextColor="#AAAAAA"
+                                                    FontSize="18"
+                                                    WidthRequest="36"
+                                                    HeightRequest="36"/>
+                                        </Grid>
 
-                                    <!-- Enabled Switch -->
-                                    <HorizontalStackLayout Spacing="6">
-                                        <Label Text="Enabled"
-                                               TextColor="#CCCCCC"
-                                               FontSize="12" />
-                                        <Switch IsToggled="{Binding IsEnabled}" />
-                                    </HorizontalStackLayout>
+                                        <!-- SECRET ROW -->
+                                        <Grid ColumnDefinitions="*,Auto"
+                                              ColumnSpacing="8">
 
-                                </VerticalStackLayout>
-                            </Frame>
+                                            <Entry Grid.Column="0"
+                                                   Text="{Binding SecretHex}"
+                                                   IsPassword="True"
+                                                   TextColor="White"
+                                                   Placeholder="Group Secret (hex)"
+                                                   BackgroundColor="#333333"
+                                                   HeightRequest="36"
+                                                   HorizontalOptions="Fill"
+                                                   FontFamily="Consolas"
+                                                   FontSize="12"
+                                                   x:Name="SecretEntry"/>
 
-                        </DataTemplate>
-                    </CollectionView.ItemTemplate>
-                </CollectionView>
+                                            <Button Grid.Column="1"
+                                                    Text="Show"
+                                                    Clicked="OnToggleSecretClicked"
+                                                    BackgroundColor="#333333"
+                                                    TextColor="White"
+                                                    CornerRadius="8"
+                                                    HeightRequest="36"
+                                                    Padding="12,0"/>
+                                        </Grid>
 
-                <!-- Add Group -->
-                <Button Text="+ Add Group"
-                        Clicked="OnAddGroupClicked"
-                        BackgroundColor="#27AE60"
-                        TextColor="White"
-                        CornerRadius="12"/>
+                                    </VerticalStackLayout>
+
+                                </Frame>
+
+                            </DataTemplate>
+                        </CollectionView.ItemTemplate>
+
+                    </CollectionView>
+
+                </Grid>
+
+                <!-- Bottom Buttons -->
+                <Grid ColumnDefinitions="Auto,*,Auto"
+                      ColumnSpacing="12">
+
+                    <Button Grid.Column="0"
+                            Text="Back"
+                            Clicked="OnBackClicked"
+                            BackgroundColor="#B85C5C"
+                            TextColor="White"
+                            CornerRadius="12"
+                            Padding="18,8"/>
+
+                    <Button Grid.Column="1"
+                            Text="Add Group +"
+                            Clicked="OnAddGroupClicked"
+                            BackgroundColor="#4A90C2"
+                            TextColor="White"
+                            CornerRadius="12"
+                            HeightRequest="42"
+                            HorizontalOptions="Fill"/>
+
+                    <Button Grid.Column="2"
+                            Text="Save"
+                            Clicked="OnSaveClicked"
+                            BackgroundColor="#3FBF6B"
+                            TextColor="White"
+                            CornerRadius="12"
+                            Padding="18,8"/>
+
+                </Grid>
 
             </VerticalStackLayout>
+
         </Frame>
+
     </Grid>
 </ContentPage>

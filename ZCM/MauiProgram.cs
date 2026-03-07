@@ -1,4 +1,5 @@
-﻿using Microsoft.EntityFrameworkCore;
+﻿using LiveChartsCore.SkiaSharpView.Maui;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Design;
 using Microsoft.Extensions.Logging;
 using Microsoft.Maui.Storage;
@@ -12,11 +13,12 @@ using ZCL.Repositories.IA;
 using ZCL.Repositories.Messages;
 using ZCL.Repositories.Peers;
 using ZCL.Repositories.Security;
+using ZCL.Security;
 using ZCL.Services.FileSharing;
 using ZCL.Services.LLM;
 using ZCL.Services.Messaging;
-using ZCL.Security;
 using ZCM.Security;
+using ZCM.Services;
 
 namespace ZCM;
 
@@ -166,6 +168,7 @@ public static class MauiProgram
                 fonts.AddFont("OpenSans-Semibold.ttf", "OpenSansSemibold");
             });
 
+
         var dbKey = "dev-only-key";
 
         builder.Services.AddDbContext<ServiceDBContext>((sp, options) =>
@@ -219,6 +222,7 @@ public static class MauiProgram
         builder.Services.AddSingleton<MessagingService>();
         builder.Services.AddSingleton<FileSharingService>();
         builder.Services.AddSingleton<LLMChatService>();
+        builder.Services.AddSingleton<ActivityService>();
 
         builder.Services.AddSingleton<Func<string>>(_ =>
         {

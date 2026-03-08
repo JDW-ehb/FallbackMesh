@@ -21,7 +21,7 @@
 
             <VerticalStackLayout Grid.Row="0" Spacing="16">
 
-                <Label Text="Zero Cloud"
+                <Label Text="FallbackMesh"
                        FontSize="22"
                        TextColor="White"
                        FontAttributes="Bold"/>

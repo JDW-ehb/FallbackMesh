@@ -1,6 +1,6 @@
-# Zero-Cloud P2P Discovery Framework
+# FallbackMesh P2P Discovery Framework
 
-A decentralized, cross-platform Peer-to-Peer (P2P) framework built with .NET MAUI & C#. The "Zero-Cloud" framework allows devices on the same local network to discover each other, communicate securely, share files, and chat without relying on external cloud infrastructure or centralized servers.
+A decentralized, cross-platform Peer-to-Peer (P2P) framework built with .NET MAUI & C#. The "FallbackMesh" framework allows devices on the same local network to discover each other, communicate securely, share files, and chat without relying on external cloud infrastructure or centralized servers.
 
 ## Features
 
@@ -46,14 +46,14 @@ Messaging local peers using integrated LLM chat logic.
 
 The solution is divided into two main architectural components:
 
-### 1. Zero Cloud Library (`ZCL`)
+### 1. FallbackMesh Library (`ZCL`)
 
 The core engine containing platform-agnostic business logic.
 
 - **Security (`ZCL.Security`):** Handles cryptography, certificate generation (`TlsCertificateProvider`), custom TLS handshakes, and trust caches (`TrustGroupCache`).
 - **Services (`ZCL.Services`):** Contains core networked services like the `FileSharingService` for transmitting file blobs and discovery protocol logic.
 
-### 2. Zero Cloud MAUI (`ZCM`)
+### 2. FallbackMesh MAUI (`ZCM`)
 
 The cross-platform user interface application.
 
@@ -74,9 +74,9 @@ The cross-platform user interface application.
 ### Installation & Run
 
 1. Clone the repository:
-1. 2. Open the solution in Visual Studio.
+2. Open the solution in Visual Studio.
 3. Set the `ZCM` (.NET MAUI) project as the startup project.
-4. Select your desired target emulatoror local machine (Windows Machine/Android Emulator/Mac Catalyst).
+4. Select your desired target emulator or local machine (Windows Machine/Android Emulator/Mac Catalyst).
 5. Build and Run (`F5`).
 
 ---
